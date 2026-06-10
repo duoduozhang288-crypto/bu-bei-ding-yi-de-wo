@@ -1,0 +1,2408 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>不被定义的我</title>
+<style>
+/* ============================================================
+   全局重置 & 舞台系统
+   ============================================================ */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;-webkit-tap-highlight-color:transparent;touch-action:manipulation;user-select:none;-webkit-user-select:none}
+#orientation-block{display:none;position:fixed;inset:0;z-index:9999;background:#1a1a2e;flex-direction:column;align-items:center;justify-content:center;color:#c9b28b}
+#orientation-block .rotate-icon{font-size:64px;animation:rotateHint 2s ease-in-out infinite;margin-bottom:24px}
+@keyframes rotateHint{0%,100%{transform:rotate(0deg)}50%{transform:rotate(90deg)}}
+#orientation-block .title{font-size:22px;letter-spacing:4px;margin-bottom:16px}
+#orientation-block .tip{font-size:15px;color:#8b7a62;text-align:center;line-height:1.8}
+#game-stage{display:none;width:1280px;height:720px;position:fixed;top:0;left:0;transform-origin:top left;overflow:hidden;background:#0d1b0e}
+.scene{display:none;position:absolute;inset:0;flex-direction:column;align-items:center;justify-content:center}
+.scene.active{display:flex}
+.bg-forest{background:linear-gradient(180deg,#1a3a1a 0%,#0d2b0d 30%,#1a2f1a 60%,#0f200f 100%)}
+.bg-forest-dark{background:linear-gradient(180deg,#0f1f0f 0%,#0a180a 40%,#0d1a0d 70%,#060f06 100%)}
+.bg-mountain{background:linear-gradient(180deg,#1a1a2e 0%,#16213e 30%,#0f3460 60%,#1a1a2e 100%)}
+.bg-warm{background:linear-gradient(180deg,#3d2b1f 0%,#2a1f14 50%,#1f1410 100%)}
+.bg-black{background:#000}
+.scene-particles{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.particle{position:absolute;border-radius:50%;opacity:0.3;animation:floatUp 6s ease-in infinite}
+.particle:nth-child(odd){animation-duration:8s;opacity:0.2}
+@keyframes floatUp{0%{transform:translateY(0) scale(1)}100%{transform:translateY(-720px) scale(0)}}
+.player{position:absolute;z-index:10;transition:transform .18s ease,opacity .8s ease}
+.road-player{width:112px;height:188px;transform-origin:50% 100%;will-change:transform}
+.road-player.facing-right{transform:scaleX(1)}.road-player.facing-left{transform:scaleX(-1)}
+.runner-frames{position:relative;width:112px;height:188px;overflow:visible;filter:drop-shadow(0 8px 5px rgba(0,0,0,.3))}
+.runner-frame{position:absolute;left:50%;bottom:0;transform:translateX(-50%);height:188px;width:auto;opacity:0}
+.runner-frame-idle,.runner-frame-a{opacity:1}
+.runner-frames.running{animation:runner-image-bob .48s infinite linear}
+.runner-frames.running .runner-frame-idle{opacity:0}
+.runner-frames.running .runner-frame-a{animation:runner-frame-a .48s infinite steps(1)}
+.runner-frames.running .runner-frame-b{animation:runner-frame-b .48s infinite steps(1)}
+@keyframes runner-frame-a{0%,49.99%{opacity:1}50%,100%{opacity:0}}
+@keyframes runner-frame-b{0%,49.99%{opacity:0}50%,100%{opacity:1}}
+@keyframes runner-image-bob{0%,100%{transform:translateY(0)}25%,75%{transform:translateY(-3px)}50%{transform:translateY(-1px)}}
+.trace-dot{position:absolute;width:24px;height:24px;border-radius:50%;cursor:pointer;transition:all 0.4s ease;z-index:85!important;pointer-events:auto}
+.trace-dot::after{content:'';position:absolute;inset:-4px;border-radius:50%;border:2px solid transparent;transition:all 0.4s ease}
+.trace-dot.inactive{background:rgba(255,220,120,0.6);box-shadow:0 0 18px rgba(255,200,60,0.6)}
+.trace-dot.inactive::after{border-color:rgba(255,220,100,0.6);animation:tracePulse 1.5s ease-in-out infinite}
+.trace-dot.active{background:rgba(255,240,100,1);box-shadow:0 0 30px rgba(255,220,60,0.9)}
+.trace-dot.active::after{border-color:rgba(255,240,100,0.8);animation:traceGlow 1s ease-in-out infinite}
+@keyframes tracePulse{0%,100%{opacity:0.7;transform:scale(1)}50%{opacity:1;transform:scale(1.3)}}
+@keyframes traceGlow{0%,100%{box-shadow:0 0 12px rgba(255,220,60,0.5)}50%{box-shadow:0 0 36px rgba(255,240,80,1)}}
+.item-icon{width:64px;height:64px;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:32px;background:rgba(255,255,255,0.08);border:2px solid rgba(255,255,255,0.12);transition:all 0.3s ease}
+.item-icon.consumed{opacity:0.35;filter:grayscale(0.8)}
+.item-icon.released{opacity:0.5}
+.item-icon.glow{animation:itemGlow 1.5s ease-in-out infinite;border-color:rgba(255,220,100,0.5);box-shadow:0 0 20px rgba(255,200,80,0.3)}
+@keyframes itemGlow{0%,100%{box-shadow:0 0 10px rgba(255,200,80,0.2)}50%{box-shadow:0 0 30px rgba(255,200,80,0.5)}}
+.item-art-wrap{display:flex;align-items:center;justify-content:center;flex:0 0 auto;overflow:visible}
+.item-art{display:block;width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 7px 8px rgba(0,0,0,.38));transition:filter .3s ease,opacity .3s ease,transform .3s ease}
+.item-art-fallback{display:none;align-items:center;justify-content:center;width:100%;height:100%;font-size:34px}
+.item-art-small{width:58px;height:64px}.item-art-medium{width:96px;height:112px}.item-art-large{width:190px;height:230px}.item-art-mini{width:34px;height:40px}
+.item-art-glow .item-art{filter:drop-shadow(0 0 8px rgba(255,224,135,.8)) drop-shadow(0 12px 14px rgba(0,0,0,.35));animation:itemArtGlow 1.8s ease-in-out infinite}
+@keyframes itemArtGlow{0%,100%{transform:translateY(0);filter:drop-shadow(0 0 7px rgba(255,224,135,.55)) drop-shadow(0 12px 14px rgba(0,0,0,.35))}50%{transform:translateY(-4px);filter:drop-shadow(0 0 16px rgba(255,224,135,.9)) drop-shadow(0 15px 16px rgba(0,0,0,.42))}}
+.btn{display:inline-flex;align-items:center;justify-content:center;padding:12px 40px;border-radius:28px;font-size:18px;letter-spacing:2px;cursor:pointer;transition:all 0.3s ease;border:none;outline:none;font-family:inherit;min-width:120px}
+.btn-primary{background:linear-gradient(135deg,#c9a96e,#a07848);color:#1a1a1a;box-shadow:0 4px 16px rgba(160,120,70,0.3)}
+.btn-primary:hover{transform:translateY(-1px);box-shadow:0 6px 24px rgba(160,120,70,0.4)}
+.btn-primary:active{transform:scale(0.97)}
+.btn-primary.disabled{background:#3a3a3a;color:#666;cursor:not-allowed;box-shadow:none;pointer-events:none}
+.btn-secondary{background:transparent;color:#c9b28b;border:1.5px solid rgba(201,178,139,0.4)}
+.btn-secondary:hover{background:rgba(201,178,139,0.08)}
+.btn.disabled{opacity:.48;cursor:not-allowed;filter:grayscale(.3)}
+.btn-step{background:linear-gradient(135deg,#e8d5b7,#c9a96e);color:#1a1a1a;font-size:20px;padding:14px 48px;letter-spacing:4px;animation:stepPulse 2s ease-in-out infinite}
+@keyframes stepPulse{0%,100%{box-shadow:0 4px 20px rgba(200,160,80,0.3)}50%{box-shadow:0 8px 32px rgba(200,160,80,0.6)}}
+.btn-close{position:absolute;top:12px;right:16px;width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);color:#c9b28b;font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.3s ease}
+.choice-panel{display:flex;gap:16px;flex-wrap:wrap;justify-content:center}
+.choice-card{background:rgba(255,255,255,0.06);border:1.5px solid rgba(255,255,255,0.12);border-radius:16px;padding:16px 24px;cursor:pointer;transition:all 0.3s ease;text-align:center;color:#d4c5a0;font-size:15px;min-width:180px;max-width:280px;min-height:168px;letter-spacing:1px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px}
+.choice-card:hover{background:rgba(255,255,255,0.1);border-color:rgba(201,178,139,0.4);transform:translateY(-2px)}
+.choice-card:active{transform:scale(0.97)}
+.choice-card.locked{opacity:0.4;cursor:not-allowed;pointer-events:none}
+.road-marker{position:absolute;bottom:170px;width:50px;height:50px;border-radius:50%;background:rgba(255,200,80,0.12);border:2.5px solid rgba(255,200,80,0.5);cursor:pointer;z-index:25;display:flex;align-items:center;justify-content:center;animation:markerGlow 1.5s ease-in-out infinite;transition:all 0.3s ease;box-shadow:0 0 18px rgba(255,180,60,0.25)}
+.road-marker::after{content:'\2726';font-size:22px;color:rgba(255,220,140,0.9);text-shadow:0 0 8px rgba(255,200,80,0.6)}
+.road-marker::before{content:'';position:absolute;inset:-6px;border-radius:50%;border:1.5px solid rgba(255,200,80,0.2);animation:markerRing 1.5s ease-in-out infinite 0.4s}
+.road-marker:hover{background:rgba(255,200,80,0.22);border-color:rgba(255,200,80,0.85);box-shadow:0 0 32px rgba(255,180,60,0.5);transform:scale(1.12)}
+.road-marker.used{opacity:0;pointer-events:none;transform:scale(0.5)}
+@keyframes markerGlow{0%,100%{box-shadow:0 0 10px rgba(255,180,60,0.2)}50%{box-shadow:0 0 34px rgba(255,200,80,0.55)}}
+@keyframes markerRing{0%,100%{transform:scale(1);opacity:0.25}50%{transform:scale(1.5);opacity:0}}
+.walk-target{position:absolute;width:32px;height:32px;border-radius:50%;border:3px solid rgba(255,220,140,0.85);pointer-events:none;animation:targetPulse 0.7s ease-out forwards;z-index:25;box-shadow:0 0 16px rgba(255,200,80,0.45)}
+@keyframes targetPulse{0%{transform:scale(0.3);opacity:1}100%{transform:scale(2.4);opacity:0}}
+.ground-indicator{position:absolute;bottom:0;left:0;right:0;height:200px;background:linear-gradient(to top,rgba(0,0,0,0.10),transparent);pointer-events:none;z-index:5}
+.interact-el{background:rgba(255,200,80,0.18);border:2px solid rgba(255,200,80,0.6);border-radius:14px;padding:6px 16px;font-size:14px;color:#ffe8c0;cursor:pointer;pointer-events:all;white-space:nowrap;transition:all 0.3s ease;letter-spacing:2px;animation:markerGlow 1.5s ease-in-out infinite;text-shadow:0 0 6px rgba(255,200,80,0.3)}
+.interact-el:hover{background:rgba(255,200,80,0.28);border-color:rgba(255,200,80,0.8);transform:scale(1.05)}
+.interact-el.confirmed{display:none}
+.interact-el.focused{border-color:#fff0a8;box-shadow:0 0 28px rgba(255,220,100,.8);transform:scale(1.08)}
+.interact-el.scene-art{width:166px;padding:8px;background:rgba(8,22,17,.48);border-color:rgba(255,225,150,.5);white-space:normal}
+.interact-el.scene-art img{width:150px;height:110px;display:block;object-fit:contain;margin:0 auto;filter:drop-shadow(0 8px 10px rgba(0,0,0,.3))}
+.interact-el.scene-art span{display:block;text-align:center;margin-top:2px;font-size:12px;letter-spacing:1px}
+.interact-el.label-side{display:flex;align-items:center;gap:8px;padding:5px 10px}
+.interact-el.label-side img{margin:0;width:72px!important;height:72px!important}.interact-el.label-side span{font-size:13px}
+.interact-el.ground-item{width:76px;padding:4px 6px;white-space:normal}.interact-el.ground-item img{width:54px!important;height:38px!important}.interact-el.ground-item span{display:block;text-align:center;font-size:10px;letter-spacing:0}
+.settlement-light{position:absolute;width:54px;height:54px;border-radius:50%;z-index:24;pointer-events:none;background:radial-gradient(circle,#fff7bd 0%,rgba(255,220,100,.75) 25%,rgba(255,200,70,.15) 62%,transparent 72%);box-shadow:0 0 34px rgba(255,220,100,.8);animation:markerGlow 1.3s ease-in-out infinite}
+.settlement-light::after{content:''}
+.road-bag-btn{position:absolute;top:18px;right:42px;z-index:30}
+#btn-bag-open{width:92px;height:72px;min-width:0;padding:0;border:0;background:transparent!important;box-shadow:none!important;overflow:visible}
+#btn-bag-open img{display:block;width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 5px 8px rgba(0,0,0,.35));transition:transform .25s ease,filter .25s ease}
+#btn-bag-open:hover img{transform:translateY(-2px) scale(1.05);filter:drop-shadow(0 0 12px rgba(225,250,245,.65)) drop-shadow(0 5px 8px rgba(0,0,0,.35))}
+#btn-bag-open:active img{transform:scale(.95)}
+.road-progress{position:absolute;top:22px;left:42px;z-index:31;min-width:330px;padding:10px 42px 10px 28px;color:#f3ffff;font-size:16px;font-weight:500;letter-spacing:3px;text-shadow:0 2px 7px rgba(0,0,0,.65);background:linear-gradient(90deg,rgba(26,104,102,.95),rgba(37,117,112,.82) 72%,rgba(37,117,112,0));clip-path:polygon(0 0,91% 0,100% 50%,91% 100%,0 100%,12px 50%);box-shadow:0 5px 18px rgba(0,0,0,.25)}
+.road-progress::before{content:'◆';margin-right:13px;color:#f2ffff;font-size:13px;text-shadow:0 0 8px rgba(255,255,255,.55)}
+.scene:not(.active) .road-marker,.scene:not(.active) .road-progress,.scene:not(.active) .interact-el{display:none!important}
+.home-title{font-size:38px;color:#d4c5a0;letter-spacing:8px;margin-bottom:16px}
+.home-subtitle{font-size:16px;color:#8b7a62;letter-spacing:3px;margin-bottom:52px}
+.home-buttons{position:absolute;left:4.35%;top:62%;width:21.7%;height:30.5%;z-index:32}
+.home-buttons .btn{position:absolute;left:0;width:100%;height:28%;min-width:0;padding:0;border:1px solid transparent;border-radius:12px;background:transparent!important;box-shadow:none!important;color:transparent!important;font-size:0;transition:background .25s ease,border-color .25s ease,box-shadow .25s ease,transform .18s ease}
+.home-buttons .btn:nth-child(1){top:0}.home-buttons .btn:nth-child(2){top:36%}.home-buttons .btn:nth-child(3){top:72%}
+.home-buttons .btn:hover{background:rgba(224,247,255,.08)!important;border-color:rgba(238,252,255,.42);box-shadow:0 0 22px rgba(205,239,255,.2),inset 0 0 18px rgba(255,255,255,.05)!important;transform:translateX(3px)}
+.home-buttons .btn:active{transform:translateX(3px) scale(.985)}
+.home-buttons .btn.disabled{opacity:.58;filter:grayscale(.45);cursor:not-allowed;background:rgba(20,54,72,.2)!important}
+.home-info{position:absolute;bottom:7px;left:50%;transform:translateX(-50%);color:rgba(238,248,250,.76);font-size:10px;letter-spacing:1px;display:flex;gap:24px;z-index:32;white-space:nowrap}
+.home-card-entry{position:absolute;top:32px;right:42px;z-index:32;animation:floatCard 3s ease-in-out infinite}
+#scene-home{background-color:#8cb8cd!important;background-image:url('picture/fengmian.jpg')!important;background-repeat:no-repeat!important;background-size:cover!important;background-position:center!important}
+#scene-home .home-title,#scene-home .home-subtitle,#scene-home>.player{display:none}
+#scene-home .home-info{background:linear-gradient(90deg,transparent,rgba(25,67,90,.34),transparent);padding:5px 34px;text-shadow:0 1px 5px rgba(0,0,0,.4)}
+#scene-home .home-card-entry .btn{color:#eefaff;border-color:rgba(255,255,255,.45);background:rgba(28,70,91,.38);backdrop-filter:blur(4px);text-shadow:0 1px 5px rgba(0,0,0,.35)}
+#scene-intro-backpack{background:#d7a65f url('picture/mama1.jpg') center/cover no-repeat!important}
+#scene-intro-backpack .intro-room{display:none}
+@keyframes floatCard{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+.forest-title{font-size:20px;color:#8b9a6b;letter-spacing:4px;margin-bottom:12px}
+.forest-prompt{font-size:15px;color:#6b7a56;letter-spacing:1px;margin-bottom:40px;text-align:center;line-height:2}
+#dialog-overlay{display:none;position:absolute;inset:0;z-index:100;pointer-events:none}
+#dialog-overlay.active{display:block;pointer-events:all}
+#dialog-box{position:absolute;left:10.5%;right:10.5%;bottom:28px;min-height:188px;padding:28px 46px 42px;background:linear-gradient(180deg,rgba(7,18,15,.35),rgba(3,10,9,.9) 28%,rgba(3,9,8,.86));border:0;color:#f2f4e9;font-size:17px;line-height:1.9;letter-spacing:2px;cursor:pointer;transition:all .3s ease;box-shadow:0 14px 34px rgba(0,0,0,.32)}
+#dialog-box::before,#dialog-box::after{content:'';position:absolute;left:28px;right:28px;height:1px;background:linear-gradient(90deg,transparent,rgba(239,245,226,.75) 9%,rgba(239,245,226,.75) 91%,transparent)}
+#dialog-box::before{top:14px}#dialog-box::after{bottom:14px}
+#dialog-speaker{display:inline-block;color:#fff;font-size:25px;font-weight:600;letter-spacing:4px;margin-bottom:9px;padding-bottom:3px;border-bottom:1px solid rgba(255,255,255,.65);text-shadow:0 2px 8px rgba(0,0,0,.8)}
+#dialog-text{transition:opacity 0.2s ease}
+#dialog-hint{position:absolute;right:38px;bottom:24px;padding:5px 12px;border-radius:14px;background:rgba(224,247,236,.1);font-size:13px;font-weight:600;letter-spacing:2px;color:rgba(255,255,255,.88);text-shadow:0 1px 5px #000;animation:blink 1.5s ease-in-out infinite}
+@keyframes blink{0%,100%{opacity:0.3}50%{opacity:0.8}}
+#scene-naming-event{background:rgba(0,0,0,0.85);z-index:50}
+.item-bar{position:absolute;right:40px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:12px;z-index:30}
+.item-slot{width:76px;height:82px;border-radius:16px;background:rgba(255,255,255,0.05);border:2px solid rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all 0.3s ease}
+.item-slot:hover:not(.consumed){border-color:rgba(255,220,100,0.5);box-shadow:0 0 16px rgba(255,200,80,0.2)}
+.item-slot.consumed{opacity:0.3;cursor:not-allowed}.item-slot.consumed .item-art{filter:grayscale(1) drop-shadow(0 5px 6px rgba(0,0,0,.35))}
+.item-slot.glow-select{border-color:rgba(255,220,100,0.6);animation:slotGlow 1s ease-in-out infinite}
+@keyframes slotGlow{0%,100%{box-shadow:0 0 8px rgba(255,200,80,0.2)}50%{box-shadow:0 0 22px rgba(255,200,80,0.4)}}
+#scene-returning-road{background-color:#0a0a1e;background-size:auto 100%;background-repeat:no-repeat;background-position:0 0;cursor:pointer}
+#scene-item-use-event{background:rgba(0,0,0,0.88);z-index:50}
+#scene-release-labels{background:linear-gradient(180deg,#1a2a1e 0%,#0f1f14 50%,#1a2a1e 100%)}
+.release-shadows{display:flex;gap:24px;margin:32px 0}
+.release-shadow-item{display:flex;flex-direction:column;align-items:center;gap:8px;cursor:pointer;transition:all 0.5s ease}
+.release-shadow-item.released{opacity:0;transform:translateY(-20px) scale(0.9);pointer-events:none}
+.release-shadow-icon{width:92px;height:112px;opacity:0.78;transition:all 0.5s ease;filter:grayscale(.15) drop-shadow(0 0 8px rgba(255,235,180,.28))}
+.release-shadow-name{font-size:14px;color:rgba(255,248,225,.9);letter-spacing:1px;text-shadow:0 2px 6px #000}
+.release-title{font-size:24px;color:#fff3cf;letter-spacing:4px;margin-bottom:8px;text-shadow:0 2px 10px #000,0 0 12px rgba(255,220,150,.4)}
+.release-intro-text{font-size:15px;color:#e8ddc2;margin-bottom:10px;text-align:center;max-width:620px;line-height:1.8;text-shadow:0 2px 6px #000}
+.release-guide{font-size:14px;color:rgba(255,250,230,.78);margin-bottom:20px;text-shadow:0 2px 6px #000}.release-count{font-size:15px;color:#fff0c8;margin-top:12px;text-shadow:0 2px 6px #000}
+.release-memory{position:absolute;left:50%;top:59%;transform:translate(-50%,-50%);z-index:95;min-width:440px;padding:17px 28px;border-radius:14px;background:rgba(10,18,14,.88);border:1px solid rgba(255,225,160,.55);box-shadow:0 10px 32px rgba(0,0,0,.55),0 0 20px rgba(255,225,160,.15);font-size:18px;color:#fff3d2;letter-spacing:2px;text-align:center;opacity:0;pointer-events:none;transition:opacity .25s ease,transform .25s ease}
+.release-memory.show{opacity:1;transform:translate(-50%,-54%)}
+@keyframes fadeIn{0%{opacity:0;transform:translateY(8px)}100%{opacity:1;transform:translateY(0)}}
+#scene-ending-black{background:#000;z-index:80}
+.ending-text{color:#d4c5a0;font-size:18px;letter-spacing:3px;text-align:center;line-height:2.4;animation:fadeInUp 1.2s ease}
+.ending-main{font-size:22px;color:#e8d5b7;margin-top:32px;letter-spacing:4px}
+.ending-sub{font-size:15px;color:#8b7a62;margin-top:16px;letter-spacing:2px}
+@keyframes fadeInUp{0%{opacity:0;transform:translateY(16px)}100%{opacity:1;transform:translateY(0)}}
+.boss-name{font-size:30px;color:#fff;letter-spacing:6px;margin-bottom:10px;font-weight:700;-webkit-text-stroke:1px rgba(48,28,9,.55);text-shadow:0 3px 9px #000,0 0 18px rgba(255,255,255,.45)}
+.boss-labels{display:flex;gap:9px;flex-wrap:wrap;justify-content:center;max-width:620px}
+.boss-label-paper{background:rgba(22,18,14,.75);border:1.5px solid rgba(255,255,255,.72);border-radius:8px;padding:6px 13px;font-size:14px;font-weight:600;color:#fff;letter-spacing:2px;box-shadow:0 3px 10px rgba(0,0,0,.5),inset 0 0 8px rgba(255,255,255,.08);text-shadow:0 2px 5px #000;transition:all 0.5s ease}
+.boss-label-paper.fallen{opacity:0.42;transform:rotate(8deg) translateY(8px);text-decoration:line-through}
+.boss-question-label{font-size:16px;color:#fff;margin-bottom:16px;letter-spacing:3px;text-shadow:0 2px 7px #000}
+.boss-scene,.boss-scene *{color:#fff!important}
+#modal-bag-panel{display:none;position:absolute;inset:0;z-index:90;background:rgba(0,0,0,.7);align-items:center;justify-content:center;backdrop-filter:blur(6px)}
+#modal-bag-panel.active{display:flex}
+.bag-modal-content{position:relative;width:820px;min-height:470px;max-height:620px;padding:32px 38px;border-radius:22px;background:linear-gradient(145deg,rgba(32,38,34,.98),rgba(18,25,22,.98));border:1px solid rgba(201,178,139,.32);box-shadow:0 24px 80px rgba(0,0,0,.7);color:#d4c5a0}
+.bag-card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;padding-bottom:15px;border-bottom:1px solid rgba(201,178,139,.18)}
+.bag-title{font-size:25px;color:#e8d5b7;letter-spacing:4px}.bag-subtitle{font-size:12px;color:#8b7a62;letter-spacing:1px;margin-top:6px}
+.bag-card-body{display:grid;grid-template-columns:310px 1fr;gap:28px;min-height:350px}
+.bag-slots{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;align-content:start}
+.bag-slot{min-height:138px;padding:12px 10px;border-radius:16px;border:1px solid rgba(255,255,255,.11);background:rgba(255,255,255,.045);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;cursor:pointer;transition:.25s}
+.bag-slot:hover,.bag-slot.selected{border-color:rgba(255,220,130,.65);background:rgba(255,220,130,.09);transform:translateY(-2px)}
+.bag-slot.consumed{opacity:.48}.slot-name{font-size:12px;letter-spacing:1px}
+.bag-note{min-height:350px;padding:25px 28px;border-radius:17px;background:rgba(201,178,139,.065);border:1px solid rgba(201,178,139,.13);font-size:14px;line-height:2;color:#cdbf9e;letter-spacing:1px;display:flex;flex-direction:column;align-items:center;text-align:center;justify-content:center}
+.bag-detail-title{margin-top:5px;font-size:20px;color:#e8d5b7;letter-spacing:3px}.bag-detail-tendency{font-size:12px;color:#c9a96e;letter-spacing:2px}.bag-detail-copy{margin-top:10px;text-align:left;line-height:1.9}.bag-detail-meta{margin-top:12px;color:#8b7a62;font-size:12px;text-align:left;width:100%;line-height:1.8}
+::-webkit-scrollbar{display:none}
+@keyframes sceneFadeIn{0%{opacity:0}100%{opacity:1}}
+.scene-fade-in{animation:sceneFadeIn 0.4s ease}
+.boss-scene{z-index:82!important;background:transparent!important}
+.traces-player-container{position:absolute;left:300px;bottom:92px;z-index:86;width:390px;height:230px;padding:0}
+#trace-dots-container{position:absolute;inset:0;z-index:87;pointer-events:auto}
+.trace-dot-row{position:absolute;left:0;width:390px;height:58px;display:flex;align-items:center;gap:14px}
+.trace-dot-row .trace-dot{position:relative!important;left:auto!important;top:auto!important;flex:0 0 auto}
+.trace-label{color:#fff;font-size:14px;line-height:1.45;letter-spacing:2px;text-shadow:0 2px 7px #000}.trace-label strong{display:block;font-size:16px}.trace-label span{color:rgba(255,255,255,.82)!important}
+#scene-body-traces .traces-hint{position:absolute;top:70px;color:#fff;text-shadow:0 2px 8px #000}
+#scene-body-traces #traces-activated-count{position:absolute;bottom:38px;left:50%;transform:translateX(-50%);color:#fff!important;text-shadow:0 2px 7px #000}
+#item-acquired-tip{position:absolute;top:34%;left:50%;z-index:205;width:min(760px,86%);padding:0;background:transparent;border:0;color:rgba(255,255,255,.95);font-size:26px;font-weight:500;line-height:1.45;letter-spacing:3px;text-align:center;text-shadow:0 2px 10px rgba(0,0,0,.45),0 0 18px rgba(255,255,255,.28);opacity:0;transform:translate(-50%,-50%) scale(.98);pointer-events:none;transition:opacity .22s ease,transform .22s ease}
+#item-acquired-tip.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
+#scene-journey-card{z-index:110;background:rgba(0,0,0,.76)}
+.card-modal{position:relative;width:430px;height:680px;display:flex;align-items:center;justify-content:center}
+.card-viewport{width:360px;height:640px;overflow:hidden;border-radius:9px;background:#e9e2cf;box-shadow:0 22px 70px rgba(0,0,0,.78)}
+.journey-card-image{display:block;width:100%;height:100%;object-fit:cover;transform:scale(1.075);filter:drop-shadow(0 10px 18px rgba(0,0,0,.52))}
+#btn-card-close{top:0;right:0;z-index:8;width:56px;height:56px;border:2px solid rgba(255,255,255,.65);background:rgba(12,28,27,.92);color:#fff;font-size:27px;box-shadow:0 7px 22px rgba(0,0,0,.55);touch-action:manipulation}
+#btn-card-close::before{content:'';position:absolute;inset:-8px;border-radius:50%}
+#btn-card-close:hover{background:rgba(38,104,99,.96);transform:scale(1.06)}
+.card-title{font-size:24px;letter-spacing:3px;color:#e8d5b7;text-align:center;margin-bottom:24px}
+.card-section-title{font-size:12px;letter-spacing:2px;color:#8b7a62;margin:12px 0 10px}
+.card-items{display:flex;gap:10px;flex-wrap:wrap}
+.card-item-chip{padding:7px 13px 7px 9px;border-radius:18px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);font-size:13px;display:flex;align-items:center;gap:7px}
+.card-memory-line{padding:6px 0;font-size:14px;letter-spacing:1px}
+.card-theme{padding:14px 16px;border-radius:12px;background:rgba(201,178,139,.07)}
+.card-theme-main{font-size:14px;line-height:1.9;letter-spacing:1px}
+
+#scene-naming-road{background-image:url(assets/images/naming-road.png);background-size:auto 100%;background-repeat:no-repeat;background-position:0 0;cursor:pointer}
+#scene-naming-road.gate2,#scene-returning-road.gate2{background-image:url(assets/images/gate2-road.png);background-size:auto 100%;background-repeat:no-repeat;background-position:0 0;cursor:pointer}
+
+#boss-bg-overlay{position:absolute;inset:0;z-index:80;opacity:0.95;background-image:url(assets/images/boss-background.png);background-size:cover;background-position:center;pointer-events:none}
+#boss-bg-overlay.show{opacity:1}
+#boss-bg-overlay{z-index:79!important;pointer-events:none}
+#scene-forest-start{background:#c8dcc8 url('assets/optimized/forest-start.jpg') center/cover no-repeat!important}
+#scene-forest-start>.player{display:none}
+#scene-forest-start .forest-title{margin:0 0 13px;padding:8px 24px;border-radius:18px;background:rgba(5,25,19,.38);font-size:28px;font-weight:600;color:#f5fff4;letter-spacing:7px;text-shadow:0 2px 10px #071a12,0 0 16px rgba(224,255,230,.45)}
+#scene-forest-start .forest-prompt{margin:0 0 108px;padding:13px 25px;border-radius:12px;background:rgba(4,20,15,.42);font-size:17px;font-weight:500;color:#f2f8e8;letter-spacing:3px;line-height:2;text-shadow:0 2px 8px #07150f}
+#btn-depart{position:absolute;left:50%;bottom:28px;transform:translateX(-50%);width:390px;height:120px;padding:0;border:0;background:transparent!important;box-shadow:none!important}
+#btn-depart img{display:block;width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 8px 15px rgba(0,0,0,.36));transition:transform .25s ease,filter .25s ease}
+#btn-depart:hover{transform:translateX(-50%) scale(1.025)}#btn-depart:hover img{filter:drop-shadow(0 0 16px rgba(255,255,255,.55)) drop-shadow(0 8px 15px rgba(0,0,0,.36))}
+#btn-depart:active{transform:translateX(-50%) scale(.985)}
+
+</style>
+</head>
+<body>
+<audio id="bgm" loop preload="auto" style="display:none"></audio>
+
+
+<!-- 竖屏提示层 -->
+<div id="orientation-block">
+  <div class="rotate-icon">📱</div>
+  <div class="title">不被定义的我</div>
+  <div class="tip">请旋转手机，横屏体验<br>这是一段向前走的路</div>
+</div>
+
+<!-- 游戏舞台 -->
+<div id="game-stage">
+<div id="boss-bg-overlay" style="display:none"></div>
+  <div id="item-acquired-tip">获得新道具，点击右上角的背包看看吧</div>
+
+  <!-- ========== 装饰粒子层 ========== -->
+  <div class="scene-particles" id="particles"></div>
+
+  <!-- ========== 首页 ========== -->
+  <div id="scene-home" class="scene active bg-forest">
+    <div class="home-title">不被定义的我</div>
+    <div class="home-subtitle">你可以拥有标签，但不必被标签定义</div>
+    <div class="home-buttons">
+      <button class="btn btn-primary" id="btn-start" aria-label="开始路途" title="开始路途">开 始</button>
+      <button class="btn btn-secondary" id="btn-continue" aria-label="旅途回忆" title="旅途回忆">继 续</button>
+      <button class="btn btn-secondary" id="btn-exit" aria-label="退出游戏" title="退出游戏">退 出</button>
+    </div>
+    <div class="home-card-entry" id="home-card-entry" style="display:none">
+      <button class="btn btn-secondary" id="btn-view-card" style="font-size:13px;padding:8px 20px">📜 查看旅程卡片</button>
+    </div>
+    <div class="home-info">
+      <span>语言：中文 &nbsp;|&nbsp; Language：English</span>
+      <span>Ver 0.1.0</span>
+      <span>🔊 音量</span>
+    </div>
+    <!-- 首页漫步角色 -->
+    <div class="player" style="left:200px;bottom:120px">
+      <div class="player-body light"></div>
+    </div>
+  </div>
+
+  <!-- ========== 开场：妈妈给背包 ========== -->
+  <div id="scene-intro-backpack" class="scene bg-warm">
+    <div class="intro-room">
+      <div class="intro-left">
+        <div style="font-size:48px;margin-bottom:12px">🚪</div>
+        <div style="font-size:28px;color:#d4c5a0">👩‍👦</div>
+        <div style="font-size:12px;color:rgba(255,255,255,0.3);margin-top:8px">妈妈</div>
+      </div>
+      <div class="intro-right">
+        <div class="intro-mountain">⛰️</div>
+        <div style="font-size:12px;color:rgba(255,255,255,0.2);margin-top:4px">远方</div>
+      </div>
+      <!-- 角色 -->
+      <div class="player" id="intro-player" style="left:340px;bottom:200px">
+        <div class="player-body" style="background:#d4c4a8"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== 森林出发 ========== -->
+  <div id="scene-forest-start" class="scene bg-forest">
+    <div class="forest-title">🌲 森林入口 🌲</div>
+    <div class="forest-prompt">森林没有告诉你答案。<br>它只是让路出现在你面前。</div>
+    <button class="btn btn-primary" id="btn-depart" aria-label="进入旅途"><img src="assets/optimized/depart-button.png" alt="进入旅途"></button>
+    <div class="player" style="left:140px;bottom:160px">
+      <div class="player-body light"></div>
+      </div>
+  </div>
+
+  <!-- ========== 寻我之路（大场景 · 点击走路） ========== -->
+  <div id="scene-naming-road" class="scene bg-forest">
+    <div class="ground-indicator"></div>
+    <div id="interactive-elements" style="position:absolute;inset:0;pointer-events:none;z-index:22"></div>
+    <div class="road-progress" id="road-progress">寻我之路｜第 1/3 道门</div>
+    <div class="road-bag-btn">
+      <button class="btn btn-secondary" id="btn-bag-open" aria-label="打开背包" title="背包"><img src="picture/10KB 人物/beibao.png" alt="背包"></button>
+    </div>
+    <!-- 三个交互点（世界坐标定位） -->
+    <div class="road-marker" id="marker-0" style="position:absolute;left:500px;display:none"></div>
+    <div class="road-marker" id="marker-1" style="position:absolute;left:1100px;display:none"></div>
+    <div class="road-marker" id="marker-2" style="position:absolute;left:1700px;display:none"></div>
+    <!-- 玩家（世界坐标定位） -->
+    <div class="player road-player facing-right" id="world-player" style="position:absolute;left:300px;bottom:100px">
+      <div class="runner-frames" id="naming-runner-frames">
+        <img class="runner-frame runner-frame-idle runner-frame-a" src="assets/optimized/runner-frame-2.png" alt="主角">
+        <img class="runner-frame runner-frame-b" src="assets/optimized/runner-frame-1.png" alt="">
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== 定义之门小场景 ========== -->
+  <div id="scene-naming-event" class="scene">
+    <div class="gate-title" id="gate-title"></div>
+    <div class="gate-theme" id="gate-theme"></div>
+    <div class="gate-scene-desc" id="gate-desc"></div>
+    <div class="choice-panel" id="choice-panel"></div>
+  </div>
+
+  <!-- ========== 道具获得反馈 ========== -->
+  <div id="scene-item-reward" class="scene">
+    <div class="reward-item-display" id="reward-item-display"></div>
+    <div class="reward-text" id="reward-text"></div>
+    <div style="margin-top:24px;font-size:12px;color:rgba(255,255,255,0.25);animation:blink 2s ease-in-out infinite">点击任意位置继续</div>
+  </div>
+
+  <!-- ========== 归我之路 ========== -->
+  <div id="scene-returning-road" class="scene gate2">
+    <div class="ground-indicator"></div>
+    <div class="road-progress" id="returning-road-progress">归我之路｜第 1/3 段</div>
+    <div class="item-bar" id="item-bar" style="position:absolute;top:80px;right:60px;z-index:35;transform:none"></div>
+    <!-- 三个困境点（世界坐标定位） -->
+    <div class="road-marker" id="challenge-marker-0" style="position:absolute;bottom:180px;left:1500px;display:none">⚡</div>
+    <div class="road-marker" id="challenge-marker-1" style="position:absolute;bottom:180px;left:2800px;display:none">🌫️</div>
+    <div class="road-marker" id="challenge-marker-2" style="position:absolute;bottom:180px;left:4200px;display:none">🌊</div>
+    <div style="position:absolute;bottom:40px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,0.2);font-size:13px" id="returning-prompt">抵达困境时，选择一个道具来面对</div>
+    <div class="player road-player facing-right" id="returning-world-player" style="position:absolute;left:200px;bottom:100px">
+      <div class="runner-frames" id="returning-runner-frames">
+        <img class="runner-frame runner-frame-idle runner-frame-a" src="assets/optimized/runner-frame-2.png" alt="主角">
+        <img class="runner-frame runner-frame-b" src="assets/optimized/runner-frame-1.png" alt="">
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== 困境使用道具 ========== -->
+  <div id="scene-item-use-event" class="scene bg-forest-dark" style="z-index:50">
+    <div style="font-size:18px;color:#d4c5a0;letter-spacing:2px;margin-bottom:8px" id="challenge-title"></div>
+    <div style="font-size:13px;color:#8b7a62;margin-bottom:24px" id="challenge-symbol"></div>
+    <div style="font-size:14px;color:#8b8b6b;text-align:center;max-width:600px;line-height:1.8;margin-bottom:24px" id="challenge-desc"></div>
+    <div style="font-size:14px;color:rgba(255,255,255,0.4);margin-bottom:20px">选择一个道具</div>
+    <div class="choice-panel" id="challenge-choice-panel"></div>
+  </div>
+
+  <!-- ========== Boss 登场 ========== -->
+  <div id="scene-boss-intro" class="scene boss-scene bg-mountain">
+    <div class="boss-name">命名之龙</div>
+    <div class="boss-labels" id="boss-labels-intro">
+      <div class="boss-label-paper">勇敢</div><div class="boss-label-paper">清醒</div>
+      <div class="boss-label-paper">安稳</div><div class="boss-label-paper">独立</div>
+      <div class="boss-label-paper">善良</div><div class="boss-label-paper">边界</div>
+    </div>
+    <div class="player" style="left:180px;bottom:200px">
+      <div class="player-body" style="background:#d4c4a8"></div>
+    </div>
+  </div>
+
+  <!-- ========== Boss 对峙 ========== -->
+  <div id="scene-boss-confrontation" class="scene boss-scene bg-mountain">
+    <div class="boss-question-label" id="boss-question-label">命名之龙质问</div>
+    <div style="font-size:17px;color:#d4c5a0;text-align:center;max-width:600px;line-height:2;letter-spacing:1px;margin-bottom:28px" id="boss-question-text"></div>
+    <div class="item-bar" id="boss-item-bar" style="position:static;flex-direction:row;gap:8px;margin-bottom:24px"></div>
+    <button class="btn btn-step" id="btn-step-forward" style="display:none">向 前 一 步</button>
+    <div style="font-size:13px;color:rgba(255,255,255,0.2);margin-top:12px" id="boss-step-count"></div>
+  </div>
+
+  <!-- ========== 痕迹亮起 ========== -->
+  <div id="scene-body-traces" class="scene boss-scene">
+    <div class="traces-hint" id="traces-hint">道具已经不在背包里了。看看它们留下了什么。</div>
+    <div class="traces-player-container" id="traces-container">
+      <div id="trace-dots-container"></div>
+    </div>
+    <div style="font-size:14px;color:rgba(255,255,255,0.3);margin-top:16px" id="traces-activated-count">0 / 3 已点亮</div>
+  </div>
+
+  <!-- ========== 放下标签 ========== -->
+  <div id="scene-release-labels" class="scene boss-scene">
+    <div class="release-title">整理背包</div>
+    <div class="release-intro-text" id="release-intro">山顶安静下来。背包不再华丽，慢慢变回妈妈最初给你的旧帆布包。</div>
+    <div class="release-guide">点击道具残影，把它们放回背包深处</div>
+    <div class="release-shadows" id="release-shadows"></div>
+    <div class="release-memory" id="release-memory-display"></div>
+    <div class="release-count" id="release-count">0 / 3 已整理</div>
+    <div class="player" style="position:static;margin-top:16px">
+      <div class="player-body" style="background:#d4c4a8"></div>
+    </div>
+  </div>
+
+  <!-- ========== 黑屏结尾 ========== -->
+  <div id="scene-ending-black" class="scene bg-black">
+    <div class="ending-text" id="ending-content"></div>
+  </div>
+
+  <!-- ========== 旅程卡片弹窗 ========== -->
+  <div id="scene-journey-card" class="scene">
+    <div class="card-modal">
+      <button class="btn-close" id="btn-card-close">✕</button>
+      <div class="card-viewport"><img class="journey-card-image" id="journey-card-image" alt="旅程结算卡"></div>
+    </div>
+  </div>
+
+  <!-- ========== 背包弹窗 ========== -->
+  <div id="modal-bag-panel">
+    <div class="bag-modal-content">
+      <div class="bag-card-header">
+        <div><div class="bag-title">🎒 旅途背包</div><div class="bag-subtitle">选择留下痕迹的物件，看看它曾陪你走过哪里</div></div>
+        <button class="btn-close" id="btn-bag-close" style="position:static">✕</button>
+      </div>
+      <div class="bag-card-body">
+        <div class="bag-slots" id="bag-slots"></div>
+        <div class="bag-note" id="bag-note">点击左侧道具查看说明</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== 对话框 ========== -->
+  <div id="dialog-overlay">
+    <div id="dialog-box">
+      <div id="dialog-speaker"></div>
+      <div id="dialog-text"></div>
+      <div id="dialog-hint">点击继续对话 ▾</div>
+    </div>
+  </div>
+
+  <!-- ========== Toast 轻提示 ========== -->
+  <div id="toast"></div>
+</div><!-- /game-stage -->
+
+<script>
+// ============================================================
+// GAME DATA — 完整结构化游戏数据（内嵌）
+// ============================================================
+const G = {
+  meta:{projectName:'不被定义的我',version:'0.1.0',language:'zh-CN',orientation:'landscape',canvasRatio:'16:9',targetDuration:'3-6分钟',offlineOnly:true,noNetworkRequest:true,packageLimit:'8MB'},
+
+  uiText:{
+    homeTitle:'不被定义的我',startButton:'开始',continueButton:'继续',exitButton:'退出',
+    continueDisabledTip:'暂无可继续的旅程',exitPlaceholderTip:'原型阶段暂不支持退出',
+    orientationTitle:'不被定义的我',orientationMainTip:'请横屏体验',orientationSubTip:'这是一段向前走的路。请旋转手机，横屏进入这段旅程。',
+    continue:'继续',backHome:'返回主页',close:'关闭',startJourney:'出发',stepForward:'向前一步',
+    organizeBag:'整理背包',viewJourneyCard:'查看旅程卡片',
+    noAvailableItemTip:'没有可使用的道具。',cardDataMissingTip:'旅程数据暂时不完整，请重新完成一次旅程。',
+    bagTitle:'背包',bagEmpty:'背包里还没有新的东西。',bagWeightLight:'背包还很轻。',
+    bagWeightMedium:'背包慢慢鼓了起来。',bagWeightHeavy:'背包装下了越来越多道具，也变得越来越沉。',
+    bagClose:'收起',itemStatusAvailable:'可使用',itemStatusConsumed:'已消耗',itemStatusReleased:'已放下',
+    rewardContinueHint:'继续点击返回主场景'
+  },
+
+  scenes:{
+    home:{id:'home',title:'首页',type:'main',next:['intro_backpack','last_saved_scene']},
+    introBackpack:{id:'intro_backpack',title:'妈妈给你的旧背包',type:'main',next:['forest_start']},
+    forestStart:{id:'forest_start',title:'森林入口',type:'transition',next:['naming_road']},
+    namingRoad:{id:'naming_road',title:'寻我之路',type:'main',next:['naming_event','returning_road']},
+    namingEvent:{id:'naming_event',title:'定义之门小场景',type:'interactive',next:['item_reward']},
+    itemReward:{id:'item_reward',title:'道具获得反馈',type:'feedback',next:['naming_road','returning_road']},
+    returningRoad:{id:'returning_road',title:'归我之路',type:'main',next:['item_use_event','boss_intro']},
+    itemUseEvent:{id:'item_use_event',title:'困境使用道具选择态',type:'interactive',next:['returning_road','boss_intro']},
+    bossIntro:{id:'boss_intro',title:'命名之龙登场',type:'transition',next:['boss_confrontation']},
+    bossConfrontation:{id:'boss_confrontation',title:'最终Boss对峙',type:'main',next:['body_traces']},
+    bodyTraces:{id:'body_traces',title:'痕迹亮起',type:'main',next:['release_labels']},
+    releaseLabels:{id:'release_labels',title:'整理背包',type:'main',next:['ending_black']},
+    endingBlack:{id:'ending_black',title:'黑屏电影感结尾',type:'ending',next:['home_completed']},
+    homeCompleted:{id:'home_completed',title:'通关后首页',type:'state',next:['journey_card','intro_backpack']},
+    journeyCard:{id:'journey_card',title:'旅程卡片',type:'modal',next:['home_completed']}
+  },
+
+  intro:{
+    id:'intro_backpack',title:'妈妈给你的旧背包',
+    motherLines:[
+      {id:'intro_mother_line_01',speaker:'mother',text:'你总问自己是谁。那就去走一走吧。'},
+      {id:'intro_mother_line_02',speaker:'mother',text:'这个包给你，路上遇到的东西，都可以先装进去。'}
+    ],
+    systemLines:[
+      {id:'intro_system_line_01',speaker:'system',text:'你还说不清自己是谁。'},
+      {id:'intro_system_line_02',speaker:'system',text:'但你可以先出发。'}
+    ],
+    backpackRewardText:'旧帆布背包轻轻晃了一下。它还很空，也很轻。'
+  },
+
+  forestStart:{id:'forest_start',title:'森林入口',prompt:'森林没有告诉你答案。它只是让路出现在你面前。',buttonText:'出发'},
+
+  namingRoad:{id:'naming_road',title:'寻我之路',intro:'你背着空空的旧包，走进森林。',markerTip:'这里似乎有什么在等你。',heavyTip:'背包里装下了越来越多道具。它们让你看起来更完整，也让脚步变慢了。'},
+
+  gates:[
+    // ===== 第一关：林中三条路 =====
+    {id:'naming_gate_01',title:'林中三条路',theme:'面对未知',
+      entryNarration:[
+        '我进入森林，面前出现三条路：',
+        '一条路有星光，但看不清尽头；',
+        '一条路有路牌，但写得很复杂；',
+        '一条路平稳宽阔，看起来最安全。'
+      ],
+      interactiveElements:[
+        {id:'element_star_path',name:'星光小路',type:'path',worldX:1700,image:'picture/场景元素_补充/1_星光小路.png',sceneArt:true,
+          visualDesc:'这是一条路 — 微光浮动，点点星光',
+          hintText:'这条路通向未知。星光不告诉你答案，只陪你往前走。',
+          confirmFlag:'chose_star_path',
+          afterConfirmText:'你走向了星光小路。前方的路消失在黑暗中，但每一步都有微光相伴。',
+          tendency:'探索',rewardItemId:'star_compass'},
+        {id:'element_road_sign',name:'复杂路牌',type:'sign',worldX:1850,image:'assets/images/road-sign.png',
+          visualDesc:'这是一条路 — 写在路牌上，质朴稳定',
+          hintText:'路牌上的字写得很复杂。你想先看清方向再走。',
+          confirmFlag:'chose_road_sign',
+          afterConfirmText:'你停在路牌前，仔细看了一会儿。然后朝着你看懂的方向走去。',
+          tendency:'判断',rewardItemId:'folded_map'},
+        {id:'element_wide_path',name:'平稳宽路',type:'path',worldX:2000,image:'picture/场景元素_补充/1_平稳宽路.png',sceneArt:true,
+          visualDesc:'这是一条路 — 宽阔沉稳，暖色安全',
+          hintText:'这条路平稳宽阔。走上去，心里会踏实一些。',
+          confirmFlag:'chose_wide_path',
+          afterConfirmText:'你走上了最宽的那条路。脚步很稳，呼吸也跟着慢下来。',
+          tendency:'安稳',rewardItemId:'old_path_charm'}
+      ],
+      bPointWorldX:2450, settlementId:'settlement_gate_01'
+    },
+    // ===== 第二关：受伤的鹿 =====
+    {id:'naming_gate_02',title:'受伤的鹿',theme:'面对他人',
+      entryNarration:[
+        '前方出现了一只受伤的鹿。',
+        '它被尖锐的藤刺缠住，呼吸很轻，像是被什么吓坏了。',
+        '靠近它，可能会被刺伤。',
+        '绕过去，也能继续往前。'
+      ],
+      interactiveElements:[
+        {id:'element_wounded_deer',name:'受伤的鹿',type:'creature',worldX:2900,screenOffsetX:-65,image:'assets/images/wounded-deer.png',groundOffset:170,
+          visualDesc:'一只小鹿被藤刺缠住，呼吸微弱',
+          hintText:'它被藤刺缠住了，呼吸越来越弱。靠近它可能会被刺伤。',
+          confirmFlag:'helped_deer',
+          afterConfirmText:'你小心地靠近，解开了藤刺。鹿站起来，回头看了你一眼，然后跑进了森林深处。',
+          tendency:'靠近',rewardItemId:'warm_shawl'},
+        {id:'element_thick_gloves',name:'地上的手套',type:'tool',image:'assets/images/gloves.png',worldX:2630,screenOffsetX:-38,groundOffset:12,groundItem:true,
+          visualDesc:'一副厚实的手套，像是路过的人落下的',
+          hintText:'这个手套看起来很厚实，好像可以抵御刺痛。',
+          confirmFlag:'took_gloves',
+          afterConfirmText:'你拿起了手套。',
+          tendency:null,rewardItemId:null},
+        {id:'element_road_behind',name:'鹿后的道路',type:'path',worldX:3200,screenOffsetX:-83,image:'picture/场景元素_补充/2_鹿身后的路.png',sceneArt:true,
+          visualDesc:'鹿后面有一条路，绕过它就能继续往前',
+          hintText:'鹿后面有一条路。如果不想靠近，也可以继续往前。',
+          confirmFlag:'left_deer',
+          afterConfirmText:'你绕过了鹿，继续向前走。森林深处传来鹿轻轻的呼吸声。',
+          tendency:null,rewardItemId:null}
+      ],
+      bPointWorldX:3450, settlementId:'settlement_gate_02',
+      behaviorRules:[
+        {conditionFlags:['helped_deer'],excludeFlags:['took_gloves'],tendency:'靠近',rewardItemId:'warm_shawl',feedbackText:'这一次，你选择了靠近。获得：暖绒披肩。'},
+        {conditionFlags:['took_gloves','helped_deer'],tendency:'边界',rewardItemId:'transparent_gloves',feedbackText:'这一次，你选择了边界。获得：透明手套。'},
+        {conditionFlags:['left_deer'],excludeFlags:['took_gloves'],tendency:'独行',rewardItemId:'quiet_cloak',feedbackText:'这一次，你选择了独行。获得：静步斗篷。'},
+        {conditionFlags:['took_gloves','left_deer'],tendency:'独行',rewardItemId:'quiet_cloak',feedbackText:'这一次，你选择了独行。获得：静步斗篷。'}
+      ]
+    },
+    // ===== 第三关：断掉的桥 =====
+    {id:'naming_gate_03',title:'断掉的桥',theme:'面对失败',
+      entryNarration:[
+        '你走了很久，脚步也慢了下来。',
+        '前方的桥断在河面上，木板散落一地，水声很急。',
+        '你以为快要到了。',
+        '但路在这里停住了。'
+      ],
+      interactiveElements:[
+        {id:'element_scattered_wood',name:'地上的木板',type:'tool',image:'assets/images/wood.png',worldX:3700,groundOffset:20,
+          visualDesc:'桥的断裂处散落着几块木板',
+          hintText:'这块木板和桥不太一样，但也许还能补上一段路。',
+          confirmFlag:'chose_wood',
+          afterConfirmText:'你把木板搭在断裂处。它并不完美，但足够让你再试一次。',
+          tendency:'再生',rewardItemId:'seed_button'},
+        {id:'element_resting_chair',name:'地上的椅子',type:'rest_point',image:'assets/images/chair.png',worldX:3830,groundOffset:38,
+          visualDesc:'桥边有一把旧椅子',
+          hintText:'如果很难受，也可以先坐下来。',
+          confirmFlag:'chose_chair',
+          afterConfirmText:'你坐了一会儿。河水还在流，但呼吸慢慢稳了下来。你终于看见，断桥旁边还有一段可以绕行的浅岸。',
+          tendency:'接纳',rewardItemId:'moon_bottle'},
+        {id:'element_distant_bridge',name:'远处的桥',type:'path',image:'assets/images/distant-bridge.png',worldX:3900,
+          visualDesc:'远处河面较窄的地方，隐约能看到另一座桥的轮廓',
+          hintText:'远处好像还有一座桥。要沿着河边走去看看吗？',
+          confirmFlag:'chose_distant_bridge',
+          afterConfirmText:'你沿着河边走了很久。后来，你从另一座桥跨过了这条河。',
+          tendency:'转向',rewardItemId:'wind_feather'}
+      ],
+      bPointWorldX:4350, settlementId:'settlement_gate_03'
+    }
+  ],
+
+  items:{
+    star_compass:{id:'star_compass',name:'星针罗盘',tendency:'探索',sourceGateTitle:'林中三条路',emoji:'🌟',sourceChoiceLabel:'探索',rewardText:'它的指针像星光一样轻轻摇晃，不指向答案，只指向你愿意走进的未知。',bagDescription:'一个小小的罗盘，指针像星光一样微微颤动。它不会告诉你唯一正确的方向，只是在陌生处给你一点微光。',consumeText:'罗盘碎成星屑，星光进入眼睛。',traceId:'trace_eye_starlight',memoryLine:'我曾经走进未知。',bossQuestion:'没有罗盘替你指路，你还敢走进未知吗？'},
+    folded_map:{id:'folded_map',name:'折角地图',tendency:'判断',sourceGateTitle:'林中三条路',emoji:'🗺️',sourceChoiceLabel:'判断',rewardText:'它被折过很多次，也被修改过很多次。看清方向，有时也是一种前进。',bagDescription:'一张被反复折起的旧地图，上面有许多路线、标记和被擦掉的痕迹。它提醒你，前进之前也可以先看清方向。',consumeText:'地图褪色，被雾侵蚀，留下观察的线纹。',traceId:'trace_eye_lines',memoryLine:'我曾经认真判断。',bossQuestion:'没有地图帮你判断，你还敢相信自己的选择吗？'},
+    old_path_charm:{id:'old_path_charm',name:'旧路护符',tendency:'安稳',sourceGateTitle:'林中三条路',emoji:'🛡️',sourceChoiceLabel:'安稳',rewardText:'它不耀眼，却让你记得：保护自己，也是一种选择。',bagDescription:'一枚被手心磨得发亮的旧护符。它不耀眼，却让人想起那些熟悉、稳妥、可以保护自己的路。',consumeText:'护符失效，脚下出现柔和光圈。',traceId:'trace_foot_glow',memoryLine:'我曾经保护自己。',bossQuestion:'没有护符替你挡住危险，你还敢承认自己只是想走稳一点吗？'},
+    warm_shawl:{id:'warm_shawl',name:'暖绒披肩',tendency:'靠近',sourceGateTitle:'受伤的鹿',emoji:'🧣',sourceChoiceLabel:'靠近',rewardText:'它很柔软，像一次认真伸出的手。靠近别人，也需要一点温度。',bagDescription:'一条柔软的披肩，边缘有细小的绒毛。它可以盖住寒冷，也可以让靠近变得不那么害怕。',consumeText:'披肩被撕裂，温度留在手掌。',traceId:'trace_palm_warmth',memoryLine:'我曾经认真靠近。',bossQuestion:'没有披肩包住伤口，你还敢靠近受伤的人吗？'},
+    transparent_gloves:{id:'transparent_gloves',name:'透明手套',tendency:'边界',sourceGateTitle:'受伤的鹿',emoji:'🧤',sourceChoiceLabel:'边界',rewardText:'它让你可以触碰，也让你记得保留自己。帮助别人，不必以失去自己为代价。',bagDescription:'一副近乎透明的手套，薄得像一层光。它允许你伸出手，也提醒你不必把自己完全交出去。',consumeText:'手套出现裂纹，手腕留下细线。',traceId:'trace_wrist_line',memoryLine:'我曾经确认边界。',bossQuestion:'没有手套隔开危险，你还敢说自己能帮助别人，又不失去自己吗？'},
+    quiet_cloak:{id:'quiet_cloak',name:'静步斗篷',tendency:'独行',sourceGateTitle:'受伤的鹿',emoji:'🧥',sourceChoiceLabel:'独行',rewardText:'它让脚步变轻。一个人往前走，不等于你没有在乎。',bagDescription:'一件低声垂落的斗篷，走路时几乎没有声音。它不代表离开别人，只代表一个人也可以继续往前。',consumeText:'斗篷消散，肩上留下风痕。',traceId:'trace_shoulder_wind',memoryLine:'我曾经独自前行。',bossQuestion:'没有斗篷藏住你的脚步，你还敢一个人穿过这条路吗？'},
+    seed_button:{id:'seed_button',name:'种子扣',tendency:'再生',sourceGateTitle:'倒下的桥',emoji:'🌱',sourceChoiceLabel:'再生',rewardText:'它小得像一颗种子，却像在提醒你：失败之后，仍然可能长出新的路。',bagDescription:'一颗像种子一样的小扣子，握在掌心时有很轻的生命感。它像是在说，断开的地方也可能重新长出什么。',consumeText:'种子扣发芽后消失，掌心留下新芽纹。',traceId:'trace_palm_sprout',memoryLine:'我曾经重新生长。',bossQuestion:'没有种子替你发芽，你还敢从失败里重新开始吗？'},
+    moon_bottle:{id:'moon_bottle',name:'月光瓶',tendency:'接纳',sourceGateTitle:'倒下的桥',emoji:'🌙',sourceChoiceLabel:'接纳',rewardText:'它装着一点安静的光。停下来承认失落，也不代表你停在了那里。',bagDescription:'一个装着柔和月光的小瓶子。它不急着照亮远方，只是安静地陪你停一会儿。',consumeText:'月光瓶变暗，心口留下月痕。',traceId:'trace_heart_moon',memoryLine:'我曾经接住失落。',bossQuestion:'没有月光替你收好难过，你还敢承认自己其实很痛吗？'},
+    wind_feather:{id:'wind_feather',name:'风向羽',tendency:'转向',sourceGateTitle:'倒下的桥',emoji:'🪶',sourceChoiceLabel:'转向',rewardText:'它不会替你决定方向，只是在风变了的时候，轻轻提醒你。',bagDescription:'一枚会随风轻轻摆动的羽毛。它不替你决定去哪，只提醒你，路不止一条。',consumeText:'羽毛被风带走，脚踝留下风纹。',traceId:'trace_ankle_wind',memoryLine:'我曾经重新选择。',bossQuestion:'没有羽毛告诉你风往哪里吹，你还敢改变方向吗？'}
+  },
+
+  backpack:{id:'old_canvas_bag',name:'妈妈的旧帆布背包',type:'self_container',isLabelItem:false,isConsumable:false,
+    stages:[
+      {id:'bag_stage_empty',name:'空背包',description:'旧帆布背包轻轻晃了一下。它还很空，也很轻。'},
+      {id:'bag_stage_medium',name:'逐渐鼓起',description:'背包慢慢鼓了起来。'},
+      {id:'bag_stage_heavy',name:'华丽沉重',description:'背包里装下了越来越多道具。它们让你看起来更完整，也让脚步变慢了。'},
+      {id:'bag_stage_final',name:'回到旧帆布包',description:'它变回了最初的旧帆布包。只是这一次，它有补丁、有纹理，也有走过路的痕迹。'}
+    ],
+    bossGeneralQuestion:'没有那些道具、标签和定义把你装满，你还敢说自己知道要往哪里走吗？'
+  },
+
+  challenges:[
+    {id:'challenge_wolf_shadow',title:'狼影扑向老人',symbol:'外部危险 / 现实行动',emoji:'🐺',
+      sceneDescription:'森林边缘，一个老人被狼影围住。影子没有实体，却一步一步逼近。',
+      itemSelectPrompt:'选择一个道具，帮他脱离危险。',
+      genericSuccessText:['你使用了：{itemName}。','狼影退开了。','你的身体多了一处痕迹。','它不是伤口的名字。','它是你曾经站出来过的证据。']},
+    {id:'challenge_fog',title:'迷雾吞掉来路',symbol:'不确定 / 自我怀疑',emoji:'🌫️',
+      sceneDescription:'雾从树根和石缝里涌出来，很快吞掉了来路，也吞掉了前方。',
+      itemSelectPrompt:'选择一个道具，穿过这片迷雾。',
+      genericSuccessText:['你使用了：{itemName}。','雾安静地漫过它，也带走了它原本的形状。','你失去了一件用来判断方向的东西。','但你开始自己记得方向。']},
+    {id:'challenge_river_bridge',title:'河流冲走桥板',symbol:'失败 / 转向 / 继续前进',emoji:'🌊',
+      sceneDescription:'河水很急，桥只剩下一半。被冲走的木板在水面上翻滚，很快就看不见了。',
+      itemSelectPrompt:'选择最后一个道具，继续前进。',
+      genericSuccessText:['你使用了：{itemName}。','水流带走了它。','你失去了最后一件可以依靠的东西。','但你听见脚下的路，开始回应你。']}
+  ],
+
+  traces:{
+    trace_eye_starlight:{id:'trace_eye_starlight',itemId:'star_compass',name:'眼睛里的星光',bodyPosition:'眼睛',revealText:'探索不在罗盘里。它在我愿意看向未知的时候。',pos:{top:'15%',left:'48%'}},
+    trace_eye_lines:{id:'trace_eye_lines',itemId:'folded_map',name:'观察形成的纹路',bodyPosition:'眼睛/额头',revealText:'判断不在地图里。它在我愿意停下来，看清世界的时候。',pos:{top:'10%',left:'52%'}},
+    trace_foot_glow:{id:'trace_foot_glow',itemId:'old_path_charm',name:'脚下的柔光',bodyPosition:'脚下',revealText:'安稳不在护符里。它在我知道怎样保护自己的时候。',pos:{top:'82%',left:'50%'}},
+    trace_palm_warmth:{id:'trace_palm_warmth',itemId:'warm_shawl',name:'手掌的温度',bodyPosition:'手掌',revealText:'温柔不在披肩里。它在我曾认真靠近的时候。',pos:{top:'40%',left:'30%'}},
+    trace_wrist_line:{id:'trace_wrist_line',itemId:'transparent_gloves',name:'手腕的细线',bodyPosition:'手腕',revealText:'边界不在手套里。它在我知道靠近也可以保留自己的时候。',pos:{top:'42%',left:'70%'}},
+    trace_shoulder_wind:{id:'trace_shoulder_wind',itemId:'quiet_cloak',name:'肩上的风痕',bodyPosition:'肩部',revealText:'独立不在斗篷里。它在我一个人也能继续走的时候。',pos:{top:'25%',left:'35%'}},
+    trace_palm_sprout:{id:'trace_palm_sprout',itemId:'seed_button',name:'掌心的新芽纹',bodyPosition:'掌心',revealText:'生长不在种子扣里。它在我失败之后仍愿意再试的时候。',pos:{top:'38%',left:'60%'}},
+    trace_heart_moon:{id:'trace_heart_moon',itemId:'moon_bottle',name:'心口的月痕',bodyPosition:'心口',revealText:'接纳不在月光瓶里。它在我允许自己难过的时候。',pos:{top:'55%',left:'50%'}},
+    trace_ankle_wind:{id:'trace_ankle_wind',itemId:'wind_feather',name:'脚踝的风纹',bodyPosition:'脚踝',revealText:'方向不在羽毛里。它在我愿意重新出发的时候。',pos:{top:'78%',left:'55%'}}
+  },
+
+  boss:{
+    id:'naming_dragon',name:'命名之龙',
+    introLines:[
+      {id:'boss_intro_line_01',speaker:'naming_dragon',text:'你终于来了。'},
+      {id:'boss_intro_line_02',speaker:'naming_dragon',text:'我让森林把你的选择凝成道具，又让路途一点点拿走它们。'},
+      {id:'boss_intro_line_03',speaker:'naming_dragon',text:'现在，背包空了。'},
+      {id:'boss_intro_line_04',speaker:'naming_dragon',text:'没有那些道具、标签和定义把你装满，你还敢说自己知道要往哪里走吗？'}
+    ],
+    disabledToolHint:'没有可使用的道具。',
+    afterTotalPrompt:'背包空了。你试着伸手去找，却什么也没有摸到。',
+    stepFeedback:['我向前走了一步。','我又向前走了一步。','我走到了龙的阴影前。'],
+    toTracePrompt:'道具已经不在背包里了。看看它们留下了什么。',
+    finalPlayerLines:[
+      {id:'trace_final_player_line_01',speaker:'player',text:'你拿走的只是道具。'},
+      {id:'trace_final_player_line_02',speaker:'player',text:'不是我。'}
+    ],
+    dragonDisappearText:'命名之龙身上的纸牌一张张脱落。它不是被打败，而是失去了继续给你贴标签的能力。'
+  },
+
+  releaseLabels:{
+    id:'release_labels',title:'整理背包',
+    introLines:['山顶安静下来。','背包不再华丽，慢慢变回妈妈最初给你的旧帆布包。','但它不再只是破旧。它有补丁，有纹理，也有故事。'],
+    organizePrompt:'点击道具残影，把它们放回背包深处。',
+    completeLines:['你没有丢掉它们。','你只是不用再背着它们证明自己。','背包变轻了。','你也重新轻快起来。']
+  },
+
+  ending:{
+    id:'ending_black',
+    question:'你终于知道自己是谁了吗？',
+    playerLines:['我不需要急着给自己一个答案。','因为我知道，我还可以继续选择。','谢谢你，带我来到这里。'],
+    mainThemeLines:['你不是这些标签的总和。','你是仍然可以选择的人。'],
+    subThemeLines:['愿你拥有许多种可能，','也始终保留重新选择的自由。'],
+    backHomeButtonText:'返回主页'
+  },
+
+  journeyCard:{id:'journey_card',title:'我的旅程卡片',type:'post_completion_modal',
+    sections:{
+      items:{id:'card_section_items',title:'我曾获得过的标签 / 道具'},
+      memories:{id:'card_section_memories',title:'我后来放下的标签'},
+      theme:{id:'card_section_theme',title:'这趟旅程想留给你的话'}
+    },
+    finalThemeLines:['你不是这些标签的总和。','你是仍然可以选择的人。','愿你拥有许多种可能，也始终保留重新选择的自由。'],
+    closeButtonText:'关闭'
+  }
+};
+
+// ============================================================
+// 游戏状态 state
+// ============================================================
+const ITEM_IMAGES = {
+  star_compass:'picture/九个道具/dj1 星针罗盘.jpg',
+  folded_map:'picture/九个道具/dj2 折角地图.jpg',
+  old_path_charm:'picture/九个道具/dj3 旧路护符.jpg',
+  warm_shawl:'picture/九个道具/dj4 暖绒披肩.jpg',
+  transparent_gloves:'picture/九个道具/dj5 透明手套.jpg',
+  quiet_cloak:'picture/九个道具/dj6 静步斗篷.jpg',
+  seed_button:'picture/九个道具/dj7 种子扣.jpg',
+  moon_bottle:'picture/九个道具/dj8 月光瓶.jpg',
+  wind_feather:'picture/九个道具/dj9 风向羽.jpg'
+};
+Object.keys(ITEM_IMAGES).forEach(itemId => {
+  if(G.items[itemId]) G.items[itemId].image = ITEM_IMAGES[itemId];
+});
+
+const JOURNEY_CARD_IMAGES = {
+  1:'assets/optimized/journey-card-1.jpg',
+  2:'assets/optimized/journey-card-2.jpg',
+  3:'assets/optimized/journey-card-3.jpg'
+};
+
+const state = {
+  currentScene: 'home',
+  currentStage: 'home',
+  hasStarted: false,
+  isCompleted: false,
+  journeyCardUnlocked: false,
+  hasSaveData: false,
+  currentGateIndex: 0,
+  completedGates: [],
+  selectedChoices: [],
+  acquiredItems: [],
+  availableItems: [],
+  consumedItems: [],
+  currentChallengeIndex: 0,
+  completedChallenges: [],
+  bodyTraces: [],
+  activatedTraces: [],
+  allTracesActivated: false,
+  bossStep: 0,
+  bossQuestions: [],
+  toolsDisabled: false,
+  triedClickDisabledTool: false,
+  releasedItems: [],
+  labelsReleased: false,
+  backpackVisualLevel: 0,
+  hasBackpack: false,
+  journeyCardData: null,
+  inputLocked: false,
+  gatePhase: 'idle',
+  gateFlags: [],
+  focusedElementId: null,
+  saveVersion: 2
+};
+
+// ============================================================
+// 工具函数
+// ============================================================
+const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => document.querySelectorAll(sel);
+
+function getItem(id){ return G.items[id]; }
+function getGate(index){ return G.gates[index]; }
+function getChallenge(index){ return G.challenges[index]; }
+function randomJourneyCardId(){ return String(Math.floor(Math.random() * 3) + 1); }
+function itemImageHtml(item, sizeClass, extraClass){
+  if(!item) return '';
+  const size = sizeClass || 'item-art-medium';
+  const extra = extraClass || '';
+  if(!item.image) return `<span class="item-art-wrap ${size} ${extra}"><span class="item-art-fallback" style="display:flex">${item.emoji}</span></span>`;
+  return `<span class="item-art-wrap ${size} ${extra}"><img class="item-art" src="${item.image || ''}" alt="${item.name}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><span class="item-art-fallback">${item.emoji}</span></span>`;
+}
+function getTraceByItemId(itemId){
+  const item = getItem(itemId);
+  return item ? G.traces[item.traceId] : null;
+}
+
+function getTraceDisplayName(trace){
+  if(!trace) return '';
+  var body = trace.bodyPosition || '';
+  if(body.indexOf('眼') >= 0 || body.indexOf('额') >= 0) return '眼里的光';
+  if(body.indexOf('脚') >= 0 || body.indexOf('踝') >= 0) return '脚下的风';
+  return '身上的疤';
+}
+
+// ============================================================
+// 场景管理
+// ============================================================
+function showScene(sceneId){
+  // 系统级函数，不受 inputLocked 限制（inputLocked 只挡用户点击）
+  const prev = state.currentScene;
+  state.currentScene = sceneId;
+  // 隐藏所有场景
+  $$('.scene').forEach(s => s.classList.remove('active'));
+  // 显示目标
+  const target = $('#scene-'+sceneId);
+  if(target){ target.classList.add('active','scene-fade-in'); }
+  // 关闭弹窗
+  $('#modal-bag-panel').classList.remove('active');
+  $('#dialog-overlay').classList.remove('active');
+  // 旅程卡片特殊处理
+  if(sceneId === 'journey-card'){
+    $('#scene-journey-card').classList.add('active');
+    renderJourneyCard();
+  }
+  if(sceneId !== 'journey-card'){
+    $('#scene-journey-card').classList.remove('active');
+  }
+  console.log('→',sceneId,'(from',prev,')');
+}
+
+function transitionTo(sceneId, shouldSave){
+  showScene(sceneId);
+  if(shouldSave !== false) saveGame();
+}
+
+// ============================================================
+// 对话系统
+// ============================================================
+let dialogQueue = [];
+let dialogCallback = null;
+let dialogCurrentIndex = 0;
+let dialogCharIndex = 0;
+let dialogTimer = null;
+let dialogFullText = '';
+
+function showDialog(lines, cb){
+  if(Array.isArray(lines)){
+    dialogQueue = lines;
+  } else if(typeof lines === 'string'){
+    dialogQueue = [{speaker:'system',text:lines}];
+  }
+  dialogCallback = cb || null;
+  dialogCurrentIndex = 0;
+  $('#dialog-overlay').classList.add('active');
+  syncRoadPlayerAnimation();
+  showDialogLine(dialogQueue[0]);
+}
+
+function showDialogLine(line){
+  if(!line){ closeDialog(); return; }
+  const speaker = line.speaker || '';
+  const text = line.text || line;
+  let speakerLabel = '';
+  if(speaker === 'mother') speakerLabel = '👩 妈妈';
+  else if(speaker === 'naming_dragon') speakerLabel = '命名之龙';
+  else if(speaker === 'player') speakerLabel = '我';
+  else if(speaker === 'system') speakerLabel = '';
+  else speakerLabel = speaker;
+  $('#dialog-speaker').textContent = speakerLabel;
+  dialogFullText = text;
+  dialogCharIndex = 0;
+  $('#dialog-text').textContent = '';
+  $('#dialog-hint').style.display = 'none';
+  clearInterval(dialogTimer);
+  dialogTimer = setInterval(typeChar, 35);
+}
+
+function typeChar(){
+  if(dialogCharIndex < dialogFullText.length){
+    $('#dialog-text').textContent += dialogFullText.charAt(dialogCharIndex);
+    dialogCharIndex++;
+  } else {
+    clearInterval(dialogTimer);
+    $('#dialog-hint').style.display = 'block';
+  }
+}
+
+function advanceDialog(){
+  // 对话推进不受 inputLocked 限制（旁白/台词期间必须可点击推进）
+  if(dialogCharIndex < dialogFullText.length){
+    // 补全当前句
+    clearInterval(dialogTimer);
+    $('#dialog-text').textContent = dialogFullText;
+    dialogCharIndex = dialogFullText.length;
+    $('#dialog-hint').style.display = 'block';
+  } else {
+    // 下一句
+    dialogCurrentIndex++;
+    if(dialogCurrentIndex < dialogQueue.length){
+      showDialogLine(dialogQueue[dialogCurrentIndex]);
+    } else {
+      closeDialog();
+    }
+  }
+}
+
+function closeDialog(){
+  clearInterval(dialogTimer);
+  $('#dialog-overlay').classList.remove('active');
+  syncRoadPlayerAnimation();
+  $('#dialog-text').textContent = '';
+  $('#dialog-speaker').textContent = '';
+  dialogQueue = [];
+  dialogCurrentIndex = 0;
+  dialogCharIndex = 0;
+  dialogFullText = '';
+  const cb = dialogCallback;
+  dialogCallback = null;
+  if(cb) setTimeout(cb, 200);
+}
+
+$('#dialog-box').addEventListener('click', advanceDialog);
+
+// ============================================================
+// Toast
+// ============================================================
+let toastTimer;
+function showToast(msg, duration=2000){
+  const t = $('#toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), duration);
+}
+
+let itemAcquiredTipTimer;
+function showItemAcquiredTip(){
+  const tip = $('#item-acquired-tip');
+  if(!tip) return;
+  clearTimeout(itemAcquiredTipTimer);
+  tip.textContent = '获得新道具，点击右上角的背包看看吧';
+  tip.classList.add('show');
+}
+
+function hideItemAcquiredTip(){
+  const tip = $('#item-acquired-tip');
+  if(!tip) return;
+  clearTimeout(itemAcquiredTipTimer);
+  tip.classList.remove('show');
+}
+
+// ============================================================
+// 存档系统
+// ============================================================
+const SAVE_KEY = 'bdbdyrs_save_v2';
+const CARD_KEY = 'bdbdyrs_card_v2';
+const RESET_KEY = 'bdbdyrs_v2_reset_done';
+
+function clearLegacyStorage(){
+  try {
+    if(localStorage.getItem(RESET_KEY)) return;
+    localStorage.removeItem('bdbdyrs_save_v1');
+    localStorage.removeItem('bdbdyrs_card_v1');
+    localStorage.setItem(RESET_KEY, '1');
+  } catch(e){}
+}
+
+function saveGame(){
+  const saveData = {
+    currentScene: state.currentScene,
+    currentStage: state.currentStage,
+    hasStarted: state.hasStarted,
+    hasBackpack: state.hasBackpack,
+    currentGateIndex: state.currentGateIndex,
+    completedGates: state.completedGates,
+    selectedChoices: state.selectedChoices,
+    acquiredItems: state.acquiredItems,
+    availableItems: state.availableItems,
+    consumedItems: state.consumedItems,
+    currentChallengeIndex: state.currentChallengeIndex,
+    completedChallenges: state.completedChallenges,
+    bodyTraces: state.bodyTraces,
+    activatedTraces: state.activatedTraces,
+    allTracesActivated: state.allTracesActivated,
+    bossStep: state.bossStep,
+    bossQuestions: state.bossQuestions,
+    toolsDisabled: state.toolsDisabled,
+    triedClickDisabledTool: state.triedClickDisabledTool,
+    releasedItems: state.releasedItems,
+    labelsReleased: state.labelsReleased,
+    backpackVisualLevel: state.backpackVisualLevel,
+    isCompleted: state.isCompleted,
+    journeyCardUnlocked: state.journeyCardUnlocked,
+    journeyCardData: state.journeyCardData,
+    gatePhase: state.gatePhase,
+    gateFlags: state.gateFlags,
+    focusedElementId: state.focusedElementId,
+    worldState: {
+      width: WORLD.width,
+      playerX: WORLD.playerX,
+      targetX: WORLD.targetX,
+      cameraX: WORLD.cameraX,
+      gateZoneX: WORLD.gateZoneX
+    },
+    saveVersion: 2
+  };
+  try {
+    localStorage.setItem(SAVE_KEY, JSON.stringify(saveData));
+    state.hasSaveData = !state.isCompleted;
+    const saveForContinue = {...saveData, isCompleted:false};
+    if(!state.isCompleted){
+      localStorage.setItem(SAVE_KEY, JSON.stringify(saveForContinue));
+    } else {
+      var ovh=document.getElementById('boss-bg-overlay');if(ovh)ovh.style.display='none';
+      localStorage.setItem(CARD_KEY, JSON.stringify({journeyCardUnlocked:true,journeyCardData:state.journeyCardData}));
+      localStorage.removeItem(SAVE_KEY);
+    }
+    updateHomeButtons();
+  } catch(e){ console.warn('存档失败',e); }
+}
+
+function loadGame(){
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if(raw){
+      const data = JSON.parse(raw);
+      Object.assign(state, data);
+      return true;
+    }
+  } catch(e){ console.warn('读档失败',e); }
+  return false;
+}
+
+function hasSave(){
+  try { return !!localStorage.getItem(SAVE_KEY); }
+  catch(e){ return false; }
+}
+
+function clearProgress(){
+  state.hasStarted = false;
+  state.hasBackpack = false;
+  state.currentGateIndex = 0;
+  state.completedGates = [];
+  state.selectedChoices = [];
+  state.acquiredItems = [];
+  state.availableItems = [];
+  state.consumedItems = [];
+  state.currentChallengeIndex = 0;
+  state.completedChallenges = [];
+  state.bodyTraces = [];
+  state.activatedTraces = [];
+  state.allTracesActivated = false;
+  state.bossStep = 0;
+  state.bossQuestions = [];
+  state.toolsDisabled = false;
+  state.triedClickDisabledTool = false;
+  state.releasedItems = [];
+  state.labelsReleased = false;
+  state.backpackVisualLevel = 0;
+  state.isCompleted = false;
+  state.currentStage = 'home';
+  state.inputLocked = false;
+  state.gatePhase = 'idle';
+  state.gateFlags = [];
+  state.focusedElementId = null;
+  state.currentScene = 'home';
+  localStorage.removeItem(SAVE_KEY);
+  updateHomeButtons();
+}
+
+function loadCardState(){
+  try {
+    const raw = localStorage.getItem(CARD_KEY);
+    if(raw){
+      const data = JSON.parse(raw);
+      state.journeyCardUnlocked = data.journeyCardUnlocked || false;
+      state.journeyCardData = data.journeyCardData || null;
+      return true;
+    }
+  } catch(e){}
+  return false;
+}
+
+function updateHomeButtons(){
+  const hasSaveData = hasSave();
+  const btnCont = $('#btn-continue');
+  if(hasSaveData){
+    btnCont.classList.remove('disabled');
+    btnCont.textContent = '继 续';
+  } else if(state.isCompleted || state.journeyCardUnlocked){
+    btnCont.classList.add('disabled');
+    btnCont.textContent = '继续（已通关）';
+  } else {
+    btnCont.classList.add('disabled');
+    btnCont.textContent = '继续（无存档）';
+  }
+  // 卡片入口
+  loadCardState();
+  const cardEntry = $('#home-card-entry');
+  cardEntry.style.display = 'block';
+  const cardButton = $('#btn-view-card');
+  if(state.journeyCardUnlocked){
+    cardButton.classList.remove('disabled');
+    cardButton.textContent = '📜 查看旅程卡片';
+  } else {
+    cardButton.classList.add('disabled');
+    cardButton.textContent = '📜 旅程卡片 · 未解锁';
+  }
+}
+
+// ============================================================
+// 背包弹窗
+// ============================================================
+function renderBagDetail(itemId, slot){
+  const item = getItem(itemId);
+  if(!item) return;
+  const note = $('#bag-note');
+  const isConsumed = state.consumedItems.includes(itemId);
+  const challengeIndex = state.consumedItems.indexOf(itemId);
+  const challenge = challengeIndex >= 0 ? G.challenges[challengeIndex] : null;
+  const trace = getTraceByItemId(itemId);
+  const status = isConsumed
+    ? `已在「${challenge ? challenge.title : '困境'}」中使用${trace ? `，留下了：${trace.name}` : ''}`
+    : '仍在背包中，可以使用';
+  $$('.bag-slot').forEach(s => s.classList.remove('selected'));
+  if(slot) slot.classList.add('selected');
+  note.innerHTML = `${itemImageHtml(item,'item-art-large','item-art-glow')}<div class="bag-detail-title">${item.name}</div><div class="bag-detail-tendency">${item.tendency}</div><div class="bag-detail-copy">${item.bagDescription}</div><div class="bag-detail-meta">来自：${item.sourceGateTitle}<br>状态：${status}</div>`;
+}
+
+function renderBagPanel(){
+  const slots = $('#bag-slots');
+  const note = $('#bag-note');
+  slots.innerHTML = '';
+  if(state.acquiredItems.length === 0){
+    note.textContent = G.uiText.bagEmpty;
+    return;
+  }
+  state.acquiredItems.forEach(itemId => {
+    const item = getItem(itemId);
+    if(!item) return;
+    const isConsumed = state.consumedItems.includes(itemId);
+    const slot = document.createElement('div');
+    slot.className = 'bag-slot' + (isConsumed ? ' consumed' : '');
+    slot.innerHTML = `${itemImageHtml(item,'item-art-medium')}<span class="slot-name">${item.name}</span>`;
+    slot.addEventListener('click', (e) => {
+      e.stopPropagation();
+      $$('.bag-slot').forEach(s => s.classList.remove('selected'));
+      slot.classList.add('selected');
+      let noteText = `【${item.name}】\n${item.bagDescription}\n来自：${item.sourceGateTitle}`;
+      if(isConsumed){
+        const challengeIndex = state.consumedItems.indexOf(itemId);
+        const challenge = G.challenges[challengeIndex];
+        const trace = getTraceByItemId(itemId);
+        noteText += `\n\n已在「${challenge ? challenge.title : '困境'}」中被使用`;
+        if(trace) noteText += `\n留下了：${trace.name}`;
+      }
+      note.textContent = noteText;
+      renderBagDetail(itemId, slot);
+    });
+    slots.appendChild(slot);
+  });
+  note.textContent = '点击道具查看说明';
+  const firstSlot = slots.querySelector('.bag-slot');
+  if(firstSlot) renderBagDetail(state.acquiredItems[0], firstSlot);
+}
+
+function openBag(){
+  renderBagPanel();
+  $('#modal-bag-panel').classList.add('active');
+}
+
+function closeBag(){
+  $('#modal-bag-panel').classList.remove('active');
+}
+
+$('#btn-bag-close').addEventListener('click', closeBag);
+$('#modal-bag-panel').addEventListener('click', function(e){
+  if(e.target === this) closeBag();
+});
+
+// ============================================================
+// 首页逻辑
+// ============================================================
+$('#btn-start').addEventListener('click', () => { var bgm=document.getElementById('bgm');if(bgm&&bgm.paused){bgm.volume=0.5;bgm.src=bgmTracks.home;bgm.play().catch(function(){});}
+  clearProgress();
+  state.hasStarted = true;
+  state.currentStage = 'intro';
+  transitionTo('intro-backpack');
+  playIntro();
+});
+
+$('#btn-continue').addEventListener('click', () => { var bgm=document.getElementById('bgm');if(bgm&&bgm.paused){bgm.volume=0.5;bgm.src=bgmTracks.home;bgm.play().catch(function(){});}
+  if(!hasSave()){
+    showToast(G.uiText.continueDisabledTip);
+    return;
+  }
+  if(state.isCompleted){
+    showToast('这趟旅程已经结束。请点击「开始」重新出发。');
+    return;
+  }
+  if(loadGame()){
+    showScene(state.currentScene);
+    // 根据当前场景恢复状态
+    resumeFromSave();
+  }
+});
+
+$('#btn-exit').addEventListener('click', () => { var bgm=document.getElementById('bgm');if(bgm&&bgm.paused){bgm.volume=0.5;bgm.src=bgmTracks.home;bgm.play().catch(function(){});}
+  window.close();
+  setTimeout(() => {
+    if(!window.closed) showToast('浏览器未允许自动关闭。现在可以安全关闭这个页面。');
+  }, 250);
+});
+
+$('#btn-view-card').addEventListener('click', () => { var bgm=document.getElementById('bgm');if(bgm&&bgm.paused){bgm.volume=0.5;bgm.src=bgmTracks.home;bgm.play().catch(function(){});}
+  if(state.journeyCardUnlocked){
+    showScene('journey-card');
+  }
+});
+
+function resumeFromSave(){
+  state.inputLocked = false;
+  if(state.worldState){
+    WORLD.width = state.worldState.width || WORLD.width;
+    WORLD.playerX = Number.isFinite(state.worldState.playerX) ? state.worldState.playerX : WORLD.playerX;
+    WORLD.targetX = WORLD.playerX;
+    WORLD.cameraX = Number.isFinite(state.worldState.cameraX) ? state.worldState.cameraX : 0;
+    if(Array.isArray(state.worldState.gateZoneX)) WORLD.gateZoneX = state.worldState.gateZoneX;
+    WORLD.isWalking = false;
+  }
+  updateHomeButtons();
+  if(state.currentScene === 'intro-backpack'){
+    playIntro();
+  } else if(state.currentScene === 'forest-start'){
+    return;
+  } else if(state.currentScene === 'naming-road'){
+    updateBackgroundScroll();
+    updatePlayerPosition();
+    updateNamingRoadUI();
+  } else if(state.currentScene === 'item-use-event'){
+    if(state.currentChallengeIndex >= 3){
+      state.currentStage = 'boss';
+      transitionTo('boss-intro');
+      playBossIntro();
+    } else {
+      openChallenge(state.currentChallengeIndex);
+    }
+  } else if(state.currentScene === 'returning-road'){
+    updateBackgroundScroll();
+    updatePlayerPosition();
+    updateReturningRoadUI();
+  } else if(state.currentScene === 'boss-intro'){
+    playBossIntro();
+  } else if(state.currentScene === 'boss-confrontation'){
+    if(state.bossStep >= 3){
+      transitionTo('body-traces');
+      startBodyTraces(true);
+    } else {
+      updateBossUI();
+    }
+  } else if(state.currentScene === 'body-traces'){
+    startBodyTraces(true);
+    if(state.allTracesActivated){
+      showDialog(G.boss.finalPlayerLines, () => {
+        transitionTo('release-labels');
+        startReleaseLabels(true);
+      });
+    }
+  } else if(state.currentScene === 'release-labels'){
+    startReleaseLabels(true);
+    if(state.labelsReleased){
+      showDialog(G.releaseLabels.completeLines, () => {
+        transitionTo('ending-black');
+        playEnding();
+      });
+    }
+  } else if(state.currentScene === 'ending-black'){
+    playEnding();
+  }
+}
+
+// ============================================================
+// 开场
+// ============================================================
+function playIntro(){
+  const lines = [
+    ...G.intro.motherLines,
+    ...G.intro.systemLines
+  ];
+  showDialog(lines, () => {
+    // 背包已获得
+    state.hasBackpack = true;
+    state.backpackVisualLevel = 1;
+    setTimeout(() => {
+      transitionTo('forest-start');
+    }, 1200);
+  });
+}
+
+// ============================================================
+// 森林出发
+// ============================================================
+$('#btn-depart').addEventListener('click', () => { var bgm=document.getElementById('bgm');if(bgm&&bgm.paused){bgm.volume=0.5;bgm.src=bgmTracks.home;bgm.play().catch(function(){});}
+  state.currentStage = 'naming';
+  state.currentGateIndex = 0;
+  state.gatePhase = 'idle';
+  state.gateFlags = [];
+  state.focusedElementId = null;
+  // 重置世界坐标
+  WORLD.playerX = 300;
+  WORLD.targetX = 300;
+  WORLD.cameraX = 0;
+  WORLD.isWalking = false;
+  transitionTo('naming-road');
+  updateBackgroundScroll();
+  updatePlayerPosition();
+  updateNamingRoadUI();
+});
+
+// ============================================================
+// 世界坐标系统 & 点击走路
+// ============================================================
+const WORLD = {
+  width: 5040,        // 单张场景图缩放后宽度（3318*720/474≈5040）
+  playerX: 200,       // 玩家世界X坐标
+  targetX: 200,       // 目标X坐标
+  cameraX: 0,         // 相机偏移
+  speed: 260,         // 移动速度 px/s
+  gateZoneX: [1800, 2800, 3800],   // 三关触发区域沿地图分布
+  gateTriggerDist: 700,  // 触发关卡的接近距离
+  isWalking: false,
+  facing: 1,
+  animFrame: null,
+};
+
+function worldToScreen(worldX){
+  return worldX - WORLD.cameraX;
+}
+
+function screenToWorld(screenX){
+  return screenX + WORLD.cameraX;
+}
+
+function clampCamera(){
+  WORLD.cameraX = Math.max(0, Math.min(WORLD.playerX - 380, WORLD.width - 1280));
+}
+
+// 地形高度曲线：基于场景图实际道路坡度采样
+// imageW=2172, worldW=5350, 比例=5350/2172≈2.464
+// 每200 image px采样道路表面亮度峰值 → display bottom px
+// 地形高度曲线 — 每张场景图独立道路剖面
+// 图尺寸 3318×474，缩放至720高后宽度≈5040
+const ROAD_SCENE1 = [[180,154],[420,115],[660,79],[900,89],[1140,88],[1380,102],[1620,90],[1860,62],[2100,48],[2340,95],[2580,115],[2820,98],[3060,132],[3300,147]];
+const ROAD_SCENE2 = [[60,146],[300,129],[540,101],[780,128],[1020,126],[1260,115],[1620,82],[1920,104],[2160,132],[2400,122],[2640,138],[2880,111],[3120,107]];
+
+function getRoadProfile(){
+  // 第二关和第三关用 scene2 的图
+  return (state.currentGateIndex >= 1) ? ROAD_SCENE2 : ROAD_SCENE1;
+}
+
+function getTerrainHeight(worldX){ if(state.currentScene==="returning-road"){ return getReturningTerrainHeight(worldX); }
+  const roadKey = getRoadProfile();
+  const imgX = worldX * 3318 / 5040;
+  let lo = roadKey[0], hi = roadKey[roadKey.length - 1];
+  for(let i = 0; i < roadKey.length - 1; i++){
+    if(imgX >= roadKey[i][0] && imgX <= roadKey[i+1][0]){
+      lo = roadKey[i]; hi = roadKey[i+1]; break;
+    }
+  }
+  const t = (imgX - lo[0]) / (hi[0] - lo[0] || 1);
+  return Math.round(lo[1] + (hi[1] - lo[1]) * t);
+}
+
+function getReturningTerrainHeight(worldX){
+  var roadKey = ROAD_SCENE2;
+  var imgX = worldX * 3318 / 5040;
+  var lo = roadKey[0], hi = roadKey[roadKey.length - 1];
+  for(var i = 0; i < roadKey.length - 1; i++){
+    if(imgX >= roadKey[i][0] && imgX <= roadKey[i+1][0]){ lo = roadKey[i]; hi = roadKey[i+1]; break; }
+  }
+  var t = (imgX - lo[0]) / (hi[0] - lo[0] || 1);
+  return Math.round(lo[1] + (hi[1] - lo[1]) * t);
+}
+
+function updateSceneBackground(){
+
+  var sceneId = (state.currentScene === 'returning-road') ? '#scene-returning-road' : '#scene-naming-road';
+  const scene = document.querySelector(sceneId);
+  if(!scene) return;
+  scene.style.backgroundPositionX = -WORLD.cameraX + 'px';
+}
+
+function switchBackgroundForGate(gateIndex){
+  // 三关都在第一张图上完成，暂不切换
+  const scene = $('#scene-naming-road');
+  if(!scene) return;
+  scene.classList.remove('gate2');
+}
+
+function updatePlayerPosition(){
+  const screenX = worldToScreen(WORLD.playerX);
+  var playerId = (state.currentScene === 'returning-road') ? '#returning-world-player' : '#world-player';
+  const player = document.querySelector(playerId);
+  if(player){
+    player.style.left = screenX + 'px';
+    player.style.bottom = getTerrainHeight(WORLD.playerX) + 'px';
+    player.style.transform = '';
+    if(WORLD.isWalking && WORLD.targetX !== WORLD.playerX){
+      WORLD.facing = WORLD.targetX < WORLD.playerX ? -1 : 1;
+    }
+    player.classList.toggle('facing-left', WORLD.facing < 0);
+    player.classList.toggle('facing-right', WORLD.facing >= 0);
+  }
+}
+
+function syncRoadPlayerAnimation(){
+  const isRoadScene = state.currentScene === 'naming-road' || state.currentScene === 'returning-road';
+  const dialogOpen = $('#dialog-overlay').classList.contains('active');
+  const shouldRun = isRoadScene && WORLD.isWalking && !state.inputLocked && !dialogOpen;
+  $$('.runner-frames').forEach(function(character){
+    character.classList.toggle('running', shouldRun && character.closest('.scene').classList.contains('active'));
+  });
+}
+
+function updateBackgroundScroll(){
+  updateSceneBackground();
+}
+
+function updateReturningChallenges(){
+  var idx=state.currentChallengeIndex;
+  var returningTitle=$('#returning-road-progress');
+  if(returningTitle) returningTitle.textContent=`归我之路｜第 ${Math.min(idx+1,3)}/3 段`;
+  for(var i=0;i<3;i++){
+    var m=document.querySelector('#challenge-marker-'+i);
+    if(!m)continue;
+    var wx=[1500,2800,4600][i];
+    var sx=worldToScreen(wx);
+    m.style.left=sx+'px';
+    m.style.bottom=(getTerrainHeight(wx)+75)+'px';
+    if(i<state.completedChallenges.length){
+      m.classList.add('used');
+      m.style.display='none';
+    }else if(i===idx){
+      var d=Math.abs(WORLD.playerX-wx);
+      m.style.display=(d<700)?'flex':'none';
+      m.classList.remove('used');
+    }else{
+      m.style.display='none';
+    }
+  }
+}
+function updateGateMarkers(){ if(state.currentScene!=='naming-road'){ for(var i=0;i<3;i++){var m=document.querySelector('#marker-'+i);if(m)m.style.display='none';}return; }
+  var idx = state.currentGateIndex;
+  for(var i=0; i<3; i++){
+    var marker = $('#marker-'+i);
+    if(!marker) continue;
+    var gateWorldX = WORLD.gateZoneX[i] || 2000;
+    var screenX = worldToScreen(gateWorldX);
+    marker.style.left = screenX + 'px';
+    marker.style.bottom = (getTerrainHeight(gateWorldX) + 75) + 'px';
+    // 已完成 → 隐藏
+    if(i < state.completedGates.length){
+      marker.style.display = 'none';
+      continue;
+    }
+    // 当前关卡 → 接近时显示
+    if(i === idx){
+      var dist = Math.abs(WORLD.playerX - gateWorldX);
+      marker.style.display = (dist < WORLD.markerTriggerDist) ? 'flex' : 'none';
+      // 标记仅作装饰
+      if(state.gatePhase === 'narration') marker.textContent = '...';
+      else if(state.gatePhase === 'interaction') marker.textContent = '';
+      else marker.textContent = '';
+      continue;
+    }
+    marker.style.display = 'none';
+  }
+  // 更新关卡交互元素（如果当前在互动阶段）
+  updateInteractiveElements();
+}
+
+function updateInteractiveElements(){
+  var container = $('#interactive-elements');
+  if(!container) return;
+  container.innerHTML = '';
+  var gate = getGate(state.currentGateIndex);
+  if(!gate) return;
+  if(state.gatePhase === 'heading_to_b'){
+    var light = document.createElement('div');
+    light.className = 'settlement-light';
+    light.style.left = (worldToScreen(gate.bPointWorldX) - 27) + 'px';
+    light.style.bottom = (getTerrainHeight(gate.bPointWorldX) + 60) + 'px';
+    container.appendChild(light);
+    return;
+  }
+  if(state.gatePhase !== 'interaction') return;
+  gate.interactiveElements.forEach(function(el){
+    var screenX = worldToScreen(el.worldX) + (typeof el.screenOffsetX === 'number' ? el.screenOffsetX : 0);
+    if(screenX < -100 || screenX > 1380) return; // 不在屏幕内
+    var confirmed = state.gateFlags.indexOf(el.confirmFlag) >= 0;
+    var div = document.createElement('div');
+    div.className = 'interact-el' + (confirmed ? ' confirmed' : '') + (state.focusedElementId === el.id ? ' focused' : '') + (el.sceneArt ? ' scene-art' : '') + (el.labelSide ? ' label-side' : '') + (el.groundItem ? ' ground-item' : '');
+    var groundOffset = typeof el.groundOffset === 'number' ? el.groundOffset : 85;
+    div.style.cssText = 'position:absolute;left:'+screenX+'px;bottom:'+(getTerrainHeight(el.worldX)+groundOffset)+'px;z-index:22;';
+    if(el.image && !confirmed){
+      var imgStyle = el.sceneArt ? '' : ' style="width:50px;height:50px;object-fit:contain;display:block;margin:0 auto"';
+      div.innerHTML = '<img src="'+el.image+'"'+imgStyle+' alt="'+el.name+'" /><span>'+el.name+'</span>';
+      if(!el.sceneArt){ div.style.background='rgba(0,0,0,0.4)';div.style.borderRadius='10px';div.style.padding='4px 8px'; }
+    } else { div.textContent = confirmed ? '✓' : el.name; }
+    div.setAttribute('data-el-id', el.id);
+    div.addEventListener('click', function(e){
+      e.stopPropagation();
+      if(state.inputLocked) return;
+      if(confirmed) return;
+      if(state.focusedElementId === el.id){
+        handleElementSecondTap(el, gate);
+      } else {
+        handleElementFirstTap(el, gate);
+      }
+    });
+    container.appendChild(div);
+  });
+}
+
+function checkAutoGate(){
+  if(state.currentScene !== 'naming-road') return;
+  if(state.gatePhase !== 'idle') return;
+  if(state.currentGateIndex >= 3) return;
+  var gx = WORLD.gateZoneX[state.currentGateIndex];
+  if(Math.abs(WORLD.playerX - gx) < WORLD.gateTriggerDist){
+    autoStartGate(state.currentGateIndex);
+  }
+}
+
+function updateNamingRoadUI(){
+  checkAutoGate();
+  updateGateMarkers();
+  if(state.currentScene==="returning-road")updateReturningChallenges();
+  syncRoadPlayerAnimation();
+  const gateIdx = state.currentGateIndex;
+  if(gateIdx < 3){
+    $('#road-progress').textContent = `寻我之路｜第 ${gateIdx+1}/3 道门`;
+  }
+  // 更新场景元素（被移除的旧emoji元素，不再需要）
+}
+
+// 点击走路
+function handleWorldClick(e){
+  if(state.inputLocked) return;
+  if(state.currentScene !== 'naming-road' && state.currentScene !== 'returning-road') return;
+  // 检查是否点了交互标记或互动元素
+  if(e.target.closest('.road-marker')) return;
+  if(e.target.closest('.interact-el')) return;
+  // 检查是否点了背包按钮
+  if(e.target.closest('#btn-bag-open')) return;
+
+  var sceneId = (state.currentScene === 'returning-road') ? '#scene-returning-road' : '#scene-naming-road';
+  const scene = document.querySelector(sceneId);
+  if(!scene) return;
+  const rect = scene.getBoundingClientRect();
+  const scaleX = 1280 / rect.width;  // 反向缩放（canvas是1280，但实际屏幕可能被scale了）
+  const clickScreenX = (e.clientX - rect.left) * scaleX;
+  WORLD.targetX = screenToWorld(clickScreenX);
+  // 限制范围
+  WORLD.targetX = Math.max(60, Math.min(WORLD.targetX, WORLD.width - 60));
+  // 显示点击目标指示器
+  showWalkTarget(clickScreenX, e);
+  // 开始走路
+  if(!WORLD.isWalking){
+    WORLD.isWalking = true;
+    updateNamingRoadUI();
+    walkLoop();
+  }
+}
+
+function showWalkTarget(screenX, e){
+  const scene = state.currentScene === 'returning-road' ? $('#scene-returning-road') : $('#scene-naming-road');
+  const rect = scene.getBoundingClientRect();
+  const scaleY = 720 / rect.height;
+  const clickScreenY = (e.clientY - rect.top) * scaleY;
+  const indicator = document.createElement('div');
+  indicator.className = 'walk-target';
+  indicator.style.left = (screenX - 16) + 'px';
+  indicator.style.top = (clickScreenY - 16) + 'px';
+  scene.appendChild(indicator);
+  setTimeout(() => indicator.remove(), 800);
+}
+
+function walkLoop(){
+  // 自动触发关卡 — 在走路前也检查
+  checkAutoGate();
+  if(state.currentScene === 'naming-road' && state.gatePhase === 'heading_to_b'){
+    var activeGate = getGate(state.currentGateIndex);
+    if(activeGate && Math.abs(WORLD.playerX - activeGate.bPointWorldX) < 55){
+      WORLD.isWalking = false;
+      WORLD.targetX = WORLD.playerX;
+      settleGate();
+      return;
+    }
+  }
+  // 归我之路：自动触发困境
+  if(state.currentScene === 'returning-road' && state.currentChallengeIndex < 3){
+    var positions = [1500, 2800, 4600];
+    var cx = positions[state.currentChallengeIndex];
+    if(Math.abs(WORLD.playerX - cx) < 400 && !state.inputLocked){
+      WORLD.isWalking = false; WORLD.targetX = WORLD.playerX;
+      openChallenge(state.currentChallengeIndex);
+    }
+  }
+  if(!WORLD.isWalking) return;
+  const dx = WORLD.targetX - WORLD.playerX;
+  const absDx = Math.abs(dx);
+  if(absDx < 3){
+    // 到达
+    WORLD.playerX = WORLD.targetX;
+    WORLD.isWalking = false;
+    updatePlayerPosition();
+    clampCamera();
+    updateBackgroundScroll();
+    updateGateMarkers();
+    updateNamingRoadUI();
+    if(state.hasStarted) saveGame();
+    WORLD.animFrame = null;
+    return;
+  }
+  // 移动 — 负重后速度减至 60%
+  const effectiveSpeed = state.acquiredItems.length >= 3 ? WORLD.speed * 0.6 : WORLD.speed;
+  const step = Math.min(absDx, effectiveSpeed / 60);
+  WORLD.playerX += Math.sign(dx) * step;
+  clampCamera();
+  updatePlayerPosition();
+  updateBackgroundScroll();
+  updateGateMarkers();
+  updateNamingRoadUI();
+  WORLD.animFrame = requestAnimationFrame(walkLoop);
+}
+
+function stopWalking(){
+  WORLD.isWalking = false;
+  WORLD.targetX = WORLD.playerX;
+  updateNamingRoadUI();
+  syncRoadPlayerAnimation();
+  if(WORLD.animFrame){
+    cancelAnimationFrame(WORLD.animFrame);
+    WORLD.animFrame = null;
+  }
+}
+
+// 场景切换时停止走路
+const origShowScene = showScene;
+showScene = function(sceneId){
+  var prev = state.currentScene;
+  var ov2=document.getElementById("boss-bg-overlay");
+  if(ov2) ov2.style.display = (sceneId==="boss-intro"||sceneId==="boss-confrontation"||sceneId==="body-traces"||sceneId==="release-labels") ? "block" : "none";
+  if(WORLD.isWalking && sceneId !== 'naming-road'){
+    stopWalking();
+  }
+  // 离开寻我之路时重置关卡阶段
+  if(prev === 'naming-road' && sceneId !== 'naming-road'){
+    state.gatePhase = 'idle';
+    state.gateFlags = [];
+    state.focusedElementId = null;
+  }
+  origShowScene(sceneId);
+  syncRoadPlayerAnimation();
+};
+
+// 绑定点击事件
+$('#scene-naming-road').addEventListener('click', handleWorldClick);
+$('#scene-returning-road').addEventListener('click', handleWorldClick);
+
+// 交互点点击
+for(let i=0; i<3; i++){
+  const marker = $('#marker-'+i);
+  if(marker){
+    marker.style.pointerEvents = 'none';
+  }
+}
+
+$('#btn-bag-open').addEventListener('click', openBag);
+
+// ===== 新版关卡系统：自动触发 → 元素互动(两次确认) → 直接结算 =====
+function autoStartGate(gateIndex){
+  var gate = getGate(gateIndex);
+  if(!gate || state.gatePhase !== 'idle') return;
+  state.gatePhase = 'narration';
+  state.currentGateIndex = gateIndex;
+  state.gateFlags = [];
+  state.focusedElementId = null;
+  state.inputLocked = true;
+  stopWalking();
+  switchBackgroundForGate(gateIndex);
+  showDialog(gate.entryNarration.map(function(t){ return {speaker:'system',text:t}; }), function(){
+    state.inputLocked = false;
+    state.gatePhase = 'interaction';
+    saveGame();
+    updateNamingRoadUI();
+  });
+}
+
+function handleElementFirstTap(element, gate){
+  if(state.gatePhase !== 'interaction' || state.inputLocked) return;
+  if(state.gateFlags.indexOf(element.confirmFlag) >= 0) return;
+  // 如果已经聚焦同一元素，重定向到第二次点击
+  if(state.focusedElementId === element.id){
+    handleElementSecondTap(element, gate);
+    return;
+  }
+  state.focusedElementId = element.id;
+  state.inputLocked = true;
+  WORLD.targetX = Math.max(60, element.worldX - 95);
+  if(!WORLD.isWalking){
+    WORLD.isWalking = true;
+    walkLoop();
+  }
+  saveGame();
+  showDialog([
+    {speaker:'system',text:element.hintText},
+    {speaker:'system',text:'再次点击确认选择'}
+  ], function(){
+    state.inputLocked = false;
+    updateNamingRoadUI();
+  });
+}
+
+function handleElementSecondTap(element, gate){
+  if(state.gatePhase !== 'interaction' || state.inputLocked) return;
+  if(state.focusedElementId !== element.id) return;
+  if(state.gateFlags.indexOf(element.confirmFlag) >= 0) return;
+  state.inputLocked = true;
+  state.gateFlags.push(element.confirmFlag);
+  // 对于非组合判定的关卡，确认任一元素后锁定其他
+  if(!gate.behaviorRules){
+    gate.interactiveElements.forEach(function(el){
+      if(el.id !== element.id) state.gateFlags.push('locked:'+el.id);
+    });
+  }
+  state.focusedElementId = null;
+  var readyForSettlement = !gate.behaviorRules || gate.behaviorRules.some(function(rule){
+    return rule.conditionFlags.every(function(f){ return state.gateFlags.indexOf(f) >= 0; }) &&
+      (!rule.excludeFlags || rule.excludeFlags.every(function(f){ return state.gateFlags.indexOf(f) < 0; }));
+  });
+  state.gatePhase = readyForSettlement ? 'heading_to_b' : 'interaction';
+  state.inputLocked = false;
+  saveGame();
+  updateNamingRoadUI();
+  showDialog([{speaker:'system',text:element.afterConfirmText || '选择已经记下。'},{
+    speaker:'system',
+    text:readyForSettlement ? '选择已经记下。继续向前。' : '你还可以继续观察这里。'
+  }], function(){
+    state.inputLocked = false;
+    updateNamingRoadUI();
+  });
+}
+
+function settleGate(){
+  var gate = getGate(state.currentGateIndex);
+  if(!gate || (state.gatePhase !== 'interaction' && state.gatePhase !== 'heading_to_b')) return;
+  state.gatePhase = 'settlement';
+  state.inputLocked = true;
+
+  var rewardItemId = null, tendency = null, feedbackText = '';
+
+  if(gate.behaviorRules){
+    for(var i = 0; i < gate.behaviorRules.length; i++){
+      var rule = gate.behaviorRules[i];
+      var allMatch = rule.conditionFlags.every(function(f){ return state.gateFlags.indexOf(f) >= 0; });
+      var noExclude = !rule.excludeFlags || rule.excludeFlags.every(function(f){ return state.gateFlags.indexOf(f) < 0; });
+      if(allMatch && noExclude){
+        rewardItemId = rule.rewardItemId;
+        tendency = rule.tendency;
+        feedbackText = rule.feedbackText;
+        break;
+      }
+    }
+  } else {
+    for(var j = 0; j < gate.interactiveElements.length; j++){
+      var el = gate.interactiveElements[j];
+      if(state.gateFlags.indexOf(el.confirmFlag) >= 0 && el.rewardItemId){
+        rewardItemId = el.rewardItemId;
+        tendency = el.tendency;
+        feedbackText = '这一次，你选择了'+tendency+'。获得：'+getItem(rewardItemId).name+'。';
+        break;
+      }
+    }
+  }
+
+  if(!rewardItemId){ state.gatePhase = 'interaction'; state.inputLocked = false; updateNamingRoadUI(); return; }
+
+  state.selectedChoices.push({gateId:gate.id,tendency:tendency,itemId:rewardItemId});
+  state.completedGates.push(gate.id);
+  state.acquiredItems.push(rewardItemId);
+  state.availableItems.push(rewardItemId);
+  state.backpackVisualLevel = Math.min(state.acquiredItems.length, 3);
+  state.currentGateIndex++;
+  state.gatePhase = 'idle';
+  state.gateFlags = [];
+  saveGame();
+
+  showItemAcquiredTip();
+  showDialog([{speaker:'system',text:feedbackText}], function(){
+    hideItemAcquiredTip();
+    state.inputLocked = false;
+    updateNamingRoadUI();
+    if(state.currentGateIndex >= 3){
+      state.currentStage = 'returning';
+      state.currentChallengeIndex = 0;
+      stopWalking();
+      setTimeout(function(){ WORLD.playerX=150;WORLD.targetX=150;WORLD.cameraX=0;WORLD.isWalking=false;WORLD.width=5200;transitionTo('returning-road');updateReturningRoadUI();updatePlayerPosition();updateBackgroundScroll(); }, 1000);
+    } else {
+      // 将下一关入口标记移到玩家当前位置
+      var nextIdx = state.currentGateIndex;
+      WORLD.gateZoneX[nextIdx] = WORLD.playerX + 200;
+      showToast('继续前进，前方有新的选择');
+    }
+  });
+}
+
+// ============================================================
+// 道具获得反馈
+// ============================================================
+function showItemReward(choice, gate){
+  const item = getItem(choice.rewardItemId);
+  if(!item) return;
+  showScene('item-reward');
+  showItemAcquiredTip();
+  $('#reward-item-display').innerHTML = itemImageHtml(item,'item-art-large','item-art-glow');
+  $('#reward-text').innerHTML = `<span class="reward-choice">这一次，你选择了${choice.tendency}。</span><br>获得：<strong>${item.name}</strong><br><span style="font-size:14px;color:#8b7a62">${item.rewardText}</span>`;
+
+  // 点击继续
+  const handler = () => {
+    $('#scene-item-reward').removeEventListener('click', handler);
+    state.inputLocked = false;
+    if(state.currentGateIndex >= 3){
+      // 三道定义之门完成，进入归我之路
+      state.currentStage = 'returning';
+      state.currentChallengeIndex = 0;
+      stopWalking();
+      transitionTo('returning-road');
+      updateReturningRoadUI();
+    } else {
+      // 返回寻我之路（保持世界位置）
+      WORLD.isWalking = false;
+      transitionTo('naming-road');
+      updateBackgroundScroll();
+      updatePlayerPosition();
+      updateNamingRoadUI();
+      // 第三道门后显示负重提示
+      if(state.currentGateIndex === 2){
+        setTimeout(() => {
+          showDialog(G.namingRoad.heavyTip);
+        }, 500);
+      }
+    }
+  };
+  setTimeout(() => {
+    $('#scene-item-reward').addEventListener('click', handler);
+  }, 400);
+}
+
+// ============================================================
+// 归我之路
+// ============================================================
+function updateReturningRoadUI(){
+  const idx = state.currentChallengeIndex;
+  // 更新困境标记
+  for(let i=0; i<3; i++){
+    const marker = $('#challenge-marker-'+i);
+    if(!marker) continue;
+    if(i < state.completedChallenges.length){
+      marker.classList.add('used');
+      marker.style.display = 'none';
+    } else if(i === idx){
+      marker.style.display = 'block';
+      marker.classList.remove('used');
+    } else {
+      marker.style.display = 'none';
+    }
+  }
+  // 更新右侧道具栏
+  renderItemBar();
+  const body = $('#returning-player-body');
+  if(body){
+    if(state.availableItems.length === 0) body.className = 'player-body light';
+    else body.className = 'player-body heavy';
+  }
+  // 如果三个困境完成，进入Boss
+  if(state.completedChallenges.length >= 3 && state.currentStage === 'returning'){
+    state.currentStage = 'boss';
+    state.toolsDisabled = true;
+    state.availableItems = [];
+    setTimeout(() => {
+      transitionTo('boss-intro');
+      playBossIntro();
+    }, 600);
+  }
+}
+
+function renderItemBar(){
+  const bar = $('#item-bar');
+  if(!bar) return;
+  bar.innerHTML = '';
+  state.acquiredItems.forEach(itemId => {
+    const item = getItem(itemId);
+    if(!item) return;
+    const isConsumed = state.consumedItems.includes(itemId);
+    const slot = document.createElement('div');
+    slot.className = 'item-slot' + (isConsumed ? ' consumed' : ' glow-select');
+    slot.innerHTML = itemImageHtml(item,'item-art-small');
+    slot.title = item.name;
+    if(!isConsumed && state.currentStage === 'returning'){
+      slot.addEventListener('click', () => { var bgm=document.getElementById('bgm');if(bgm&&bgm.paused){bgm.volume=0.5;bgm.src=bgmTracks.home;bgm.play().catch(function(){});}
+        if(state.inputLocked) return;
+        useItemInChallenge(itemId);
+      });
+    }
+    bar.appendChild(slot);
+  });
+}
+
+// 点击困境标记
+for(let i=0; i<3; i++){
+  const marker = $('#challenge-marker-'+i);
+  if(marker){
+    marker.addEventListener('click', () => { var bgm=document.getElementById('bgm');if(bgm&&bgm.paused){bgm.volume=0.5;bgm.src=bgmTracks.home;bgm.play().catch(function(){});}
+      if(state.inputLocked) return;
+      if(i !== state.currentChallengeIndex) return;
+      if(state.availableItems.length === 0) return;
+      openChallenge(i);
+    });
+  }
+}
+
+function openChallenge(idx){
+  const challenge = getChallenge(idx);
+  if(!challenge) return;
+  state.inputLocked = true;
+  $('#challenge-title').textContent = challenge.emoji + ' ' + challenge.title;
+  $('#challenge-symbol').textContent = challenge.symbol;
+  $('#challenge-desc').textContent = challenge.sceneDescription;
+  showScene('item-use-event');
+  renderChallengeChoices(challenge);
+  state.inputLocked = false;
+  saveGame();
+}
+
+function renderChallengeChoices(challenge){
+  const panel = $('#challenge-choice-panel');
+  panel.innerHTML = '';
+  state.availableItems.forEach(itemId => {
+    const item = getItem(itemId);
+    if(!item) return;
+    const card = document.createElement('div');
+    card.className = 'choice-card';
+    card.innerHTML = `${itemImageHtml(item,'item-art-medium','item-art-glow')}<span>${item.name}</span><span style="font-size:11px;color:#8b7a62">${item.tendency}</span>`;
+    card.addEventListener('click', () => { var bgm=document.getElementById('bgm');if(bgm&&bgm.paused){bgm.volume=0.5;bgm.src=bgmTracks.home;bgm.play().catch(function(){});}
+      if(state.inputLocked) return;
+      useItemInChallenge(itemId);
+    });
+    panel.appendChild(card);
+  });
+}
+
+function useItemInChallenge(itemId){
+  state.inputLocked = true;
+  const challengeIdx = state.currentChallengeIndex;
+  const challenge = getChallenge(challengeIdx);
+  const item = getItem(itemId);
+  if(!item || !challenge) return;
+  // 消耗道具
+  state.availableItems = state.availableItems.filter(id => id !== itemId);
+  state.consumedItems.push(itemId);
+  // 生成身体痕迹
+  const trace = getTraceByItemId(itemId);
+  if(trace) {
+    state.bodyTraces.push(trace.id);
+    console.log('🔵 痕迹生成:', trace.id, trace.name, '| 当前共', state.bodyTraces.length, '个痕迹');
+  } else {
+    console.warn('⚠️ 未找到痕迹映射:', itemId);
+  }
+  // 记录
+  state.completedChallenges.push(challenge.id);
+  state.currentChallengeIndex++;
+  state.backpackVisualLevel = Math.max(0, 3 - state.consumedItems.length);
+  // 显示反馈
+  const successText = challenge.genericSuccessText.map(t => t.replace('{itemName}', item.name));
+  successText.push('','— 点击继续 —');
+  saveGame();
+  showDialog(successText.map(t => ({speaker:'system',text:t})), () => {
+    state.inputLocked = false;
+    if(state.currentChallengeIndex >= 3){
+      state.currentStage = 'boss';
+      state.toolsDisabled = true;
+      state.availableItems = [];
+      transitionTo('boss-intro');
+      setTimeout(() => playBossIntro(), 300);
+    } else {
+      transitionTo('returning-road');
+      updateReturningRoadUI();
+    }
+  });
+}
+
+// ============================================================
+// Boss 登场
+// ============================================================
+function playBossIntro(){
+  showDialog(G.boss.introLines, () => {
+    state.inputLocked=false;showScene('boss-confrontation');
+    startBossConfrontation();
+    saveGame();
+  });
+}
+
+function startBossConfrontation(){
+  state.bossStep = 0;
+  state.bossQuestions = state.consumedItems.map(itemId => {
+    const item = getItem(itemId);
+    return item ? item.bossQuestion : '';
+  }).filter(Boolean);
+  state.toolsDisabled = true;
+  state.triedClickDisabledTool = false;
+  updateBossUI();
+}
+
+function updateBossUI(){
+  // 道具栏（变灰）
+  const bar = $('#boss-item-bar');
+  if(bar){
+    bar.innerHTML = '';
+    state.acquiredItems.forEach(itemId => {
+      const item = getItem(itemId);
+      if(!item) return;
+      const slot = document.createElement('div');
+      slot.className = 'item-slot consumed';
+      slot.innerHTML = itemImageHtml(item,'item-art-small');
+      slot.title = item.name;
+      slot.addEventListener('click', () => { var bgm=document.getElementById('bgm');if(bgm&&bgm.paused){bgm.volume=0.5;bgm.src=bgmTracks.home;bgm.play().catch(function(){});}
+        state.triedClickDisabledTool = true;
+        showToast(G.boss.disabledToolHint);
+      });
+      bar.appendChild(slot);
+    });
+  }
+  // 质问文本
+  if(state.bossStep < 3 && state.bossQuestions[state.bossStep]){
+    $('#boss-question-text').textContent = state.bossQuestions[state.bossStep];
+    $('#btn-step-forward').style.display = 'inline-flex';
+  } else if(state.bossStep >= 3){
+    $('#boss-question-text').textContent = '';
+    $('#btn-step-forward').style.display = 'none';
+  }
+  $('#boss-step-count').textContent = `${state.bossStep} / 3 步`;
+}
+
+$('#btn-step-forward').addEventListener('click', () => { var bgm=document.getElementById('bgm');if(bgm&&bgm.paused){bgm.volume=0.5;bgm.src=bgmTracks.home;bgm.play().catch(function(){});}
+  if(state.inputLocked) return;
+  state.inputLocked = true;
+  state.bossStep++;
+  saveGame();
+  // 步进反馈
+  const feedback = G.boss.stepFeedback[Math.min(state.bossStep-1, 2)] || '';
+  showDialog([{speaker:'system',text:feedback}], () => {
+    state.inputLocked = false;
+    if(state.bossStep >= 3){
+      state.inputLocked=false;transitionTo('body-traces');
+      setTimeout(() => startBodyTraces(false), 400);
+    } else {
+      $('#btn-step-forward').style.display = 'none';
+      setTimeout(() => {
+        updateBossUI();
+      }, 300);
+    }
+  });
+  if(state.bossStep < 3){
+    $('#btn-step-forward').style.display = 'none';
+    $('#boss-question-text').textContent = '';
+    $('#boss-step-count').textContent = `${state.bossStep} / 3 步`;
+  }
+});
+
+// ============================================================
+// 痕迹亮起
+// ============================================================
+function startBodyTraces(preserveProgress){
+  if(!preserveProgress){
+    state.activatedTraces = [];
+    state.allTracesActivated = false;
+  } else if(state.bodyTraces.length >= 3 && state.activatedTraces.length >= state.bodyTraces.length){
+    state.allTracesActivated = true;
+  }
+
+  // 防御：如果 bodyTraces 不足 3 个，从 consumedItems 重新生成
+  if(state.bodyTraces.length < 3 && state.consumedItems.length >= 3){
+    console.warn('⚠️ bodyTraces 数量异常('+state.bodyTraces.length+')，从 consumedItems 重新生成');
+    state.bodyTraces = state.consumedItems.map(itemId => {
+      const trace = getTraceByItemId(itemId);
+      return trace ? trace.id : null;
+    }).filter(Boolean);
+  }
+
+  console.log('🔍 进入痕迹亮起: bodyTraces='+state.bodyTraces.length+'个, consumedItems='+state.consumedItems.length+'个');
+
+  const container = $('#trace-dots-container');
+  container.innerHTML = '';
+  // 按获得顺序在背景白色主角旁纵向生成光点和特征
+  state.bodyTraces.forEach((traceId, idx) => {
+    const trace = G.traces[traceId];
+    if(!trace) { console.warn('⚠️ 未找到痕迹:', traceId); return; }
+    const item = getItem(trace.itemId);
+    const row = document.createElement('div');
+    row.className = 'trace-dot-row';
+    row.style.top = (idx * 74) + 'px';
+    const dot = document.createElement('div');
+    dot.className = 'trace-dot ' + (state.activatedTraces.includes(traceId) ? 'active' : 'inactive');
+    dot.dataset.traceId = traceId;
+    dot.addEventListener('click', () => activateTrace(traceId, dot));
+    const label = document.createElement('div');
+    label.className = 'trace-label';
+    label.innerHTML = `<strong>${item ? item.tendency : ''}</strong><span>${getTraceDisplayName(trace)}</span>`;
+    row.appendChild(dot);
+    row.appendChild(label);
+    container.appendChild(row);
+  });
+  $('#traces-hint').textContent = G.boss.toTracePrompt;
+  $('#traces-activated-count').textContent = `${state.activatedTraces.length} / 3 已点亮`;
+}
+
+function activateTrace(traceId, dotElement){
+  if(state.inputLocked) return;
+  if(state.activatedTraces.includes(traceId)) return;
+  state.inputLocked = true;
+  state.activatedTraces.push(traceId);
+  saveGame();
+  dotElement.className = 'trace-dot active';
+  const trace = G.traces[traceId];
+  // 更新计数
+  $('#traces-activated-count').textContent = `${state.activatedTraces.length} / 3 已点亮`;
+  // 是否为最后一个痕迹
+  const isLast = state.activatedTraces.length >= 3;
+  // 显示痕迹文案
+  if(trace){
+    showDialog([{speaker:'system',text:trace.revealText}], () => {
+      state.inputLocked = false;
+      // 全部点亮后才进入下一阶段
+      if(isLast){
+        state.allTracesActivated = true;
+        saveGame();
+        setTimeout(() => {
+          showDialog(G.boss.finalPlayerLines, () => {
+            transitionTo('release-labels');
+            startReleaseLabels(false);
+          });
+        }, 1000);
+      }
+    });
+  } else {
+    state.inputLocked = false;
+    if(isLast){
+      state.allTracesActivated = true;
+      saveGame();
+      setTimeout(() => {
+        showDialog(G.boss.finalPlayerLines, () => {
+          transitionTo('release-labels');
+          startReleaseLabels(false);
+        });
+      }, 1000);
+    }
+  }
+}
+
+// ============================================================
+// 放下标签
+// ============================================================
+function startReleaseLabels(preserveProgress){
+  if(!preserveProgress){
+    state.releasedItems = [];
+    state.labelsReleased = false;
+  } else if(state.acquiredItems.length >= 3 && state.releasedItems.length >= state.acquiredItems.length){
+    state.labelsReleased = true;
+  }
+  state.inputLocked = false;
+  // 确保无残留对话框阻挡点击
+  $('#dialog-overlay').classList.remove('active');
+  clearInterval(dialogTimer);
+  $('#release-intro').textContent = G.releaseLabels.introLines.join('');
+  $('#release-count').textContent = `${state.releasedItems.length} / 3 已整理`;
+  const memoryDisplay = $('#release-memory-display');
+  memoryDisplay.textContent = '';
+  memoryDisplay.classList.remove('show');
+  const shadows = $('#release-shadows');
+  shadows.innerHTML = '';
+  state.acquiredItems.forEach((itemId, index) => {
+    const item = getItem(itemId);
+    if(!item) return;
+    const div = document.createElement('div');
+    div.className = 'release-shadow-item';
+    div.innerHTML = `<div class="release-shadow-icon">${itemImageHtml(item,'item-art-medium')}</div><div class="release-shadow-name">${item.name}</div>`;
+    if(state.releasedItems.includes(itemId)) div.classList.add('released');
+    div.addEventListener('click', () => { var bgm=document.getElementById('bgm');if(bgm&&bgm.paused){bgm.volume=0.5;bgm.src=bgmTracks.home;bgm.play().catch(function(){});}
+      if(state.inputLocked) return;
+      if(state.releasedItems.includes(itemId)) return;
+      state.inputLocked = true;
+      state.releasedItems.push(itemId);
+      div.classList.add('released');
+      memoryDisplay.textContent = item.memoryLine;
+      memoryDisplay.classList.add('show');
+      $('#release-count').textContent = `${state.releasedItems.length} / 3 已整理`;
+      saveGame();
+      setTimeout(() => {
+        memoryDisplay.classList.remove('show');
+        memoryDisplay.textContent = '';
+        state.inputLocked = false;
+        if(state.releasedItems.length >= 3){
+          state.labelsReleased = true;
+          state.backpackVisualLevel = 4;
+          saveGame();
+          showDialog(G.releaseLabels.completeLines, () => {
+            transitionTo('ending-black');
+            playEnding();
+          });
+        }
+      }, 1000);
+    });
+    shadows.appendChild(div);
+  });
+}
+
+// ============================================================
+// 黑屏结尾
+// ============================================================
+function playEnding(){
+  const endingLines = [
+    {speaker:'我',text:G.ending.question},
+    {speaker:'我',text:G.ending.playerLines[0]},
+    {speaker:'我',text:G.ending.playerLines[1]},
+    {speaker:'我',text:G.ending.playerLines[2]},
+    {speaker:'我',text:G.ending.mainThemeLines[0]},
+    {speaker:'我',text:G.ending.mainThemeLines[1]},
+    {speaker:'我',text:G.ending.subThemeLines[0]},
+    {speaker:'我',text:G.ending.subThemeLines[1]},
+  ];
+  showDialog(endingLines, () => {
+    state.isCompleted = true;
+    state.journeyCardUnlocked = true;
+    state.hasSaveData = false;
+    // 生成旅程卡片数据
+    state.journeyCardData = {
+      acquiredItems: [...state.acquiredItems],
+      consumedItems: [...state.consumedItems],
+      selectedChoices: [...state.selectedChoices],
+      bodyTraces: [...state.bodyTraces],
+      cardImageId: randomJourneyCardId()
+    };
+    saveGame();
+    var ovh=document.getElementById('boss-bg-overlay');if(ovh)ovh.style.display='none';
+    showScene('journey-card');
+  });
+}
+
+// ============================================================
+// 旅程卡片
+// ============================================================
+const JOURNEY_ENDINGS = {
+  '探索|靠近|再生':['向光而行的人','你走进未知，你靠近他人，你在断掉的地方重新长出来——这已经足够。'],
+  '探索|靠近|接纳':['带着星光停下来的人','走向未知的勇气、靠近他人的温度，和允许自己停下来的接纳，加在一起已经很完整。'],
+  '探索|靠近|转向':['带着温度转弯的人','带着星光出发的人，也可以在风变的时候轻轻转弯。'],
+  '探索|边界|再生':['清醒的冒险家','清醒的善意，比盲目的燃烧更持久。你不必把自己全部交出去，也能留下痕迹。'],
+  '探索|边界|接纳':['给自己留了一盏灯的人','你愿意走进未知，也记得保留边界；探索世界和保护自己，从来不是二选一。'],
+  '探索|边界|转向':['看风的旅人','你带着好奇，也带着边界感，在需要的时候轻轻转一个弯。'],
+  '探索|独行|再生':['独自开花的树','独自走过的每一步，都变成了年轮。你是一棵自己长成的大树。'],
+  '探索|独行|接纳':['在寂静里住着光的人','寂静不是空荡，是你能够装下自己的全部，包括那些难过的时刻。'],
+  '探索|独行|转向':['不设终点的旅人','自由不是抵达某个终点，而是任何时候都可以重新出发。'],
+  '判断|靠近|再生':['认真靠近的修复者','你先看清地图，再伸出手，再让断掉的地方重新长出来。'],
+  '判断|靠近|接纳':['温柔而有分量的人','你的柔软不是软弱，它是经过判断之后的选择。'],
+  '判断|靠近|转向':['在风中依然温暖的','转弯不意味着失去判断或温度，它只是让你多了一份灵活。'],
+  '判断|边界|再生':['清醒地重新开始的人','清醒和边界不是疏离，它们让重新开始成为可能。'],
+  '判断|边界|接纳':['安静地爱着世界的人','安静地存在、判断与接纳，不需要轰鸣，也已经足够重要。'],
+  '判断|边界|转向':['灵活而忠于自己的人','你用灵活的方式保持对自己的忠诚，走出属于自己的路径。'],
+  '判断|独行|再生':['沉默的建造者','你不必向世界解释每一步的计算。你建的，你自己知道。'],
+  '判断|独行|接纳':['和自己并肩的人','独处不是寂寞，是你学会了做自己的同伴。'],
+  '判断|独行|转向':['转角的观察者','风向变了，你看见了，然后轻轻调整方向继续往前走。'],
+  '安稳|靠近|再生':['温柔生根的人','把根扎稳，再伸出手；你的温柔从来不是空中楼阁。'],
+  '安稳|靠近|接纳':['在一个安全的距离里拥抱的人','安稳不是胆怯，是给温柔一个可以扎根的地方。'],
+  '安稳|靠近|转向':['稳稳地转向光的人','安全感和灵活性从来不是反义词，你带着温度稳稳地转了弯。'],
+  '安稳|边界|再生':['有围墙的花园','边界只是你保护花园的方式。花园里，种子正在发芽。'],
+  '安稳|边界|接纳':['安放自己柔软的人','给自己留退路、手套和月光，不是软弱，是成熟。'],
+  '安稳|边界|转向':['安静地改变方向的人','安静地调整也是一种力量。稳，不等于僵。'],
+  '安稳|独行|再生':['一个人的根据地','独处不是与世界断开，而是先建好自己的根据地。'],
+  '安稳|独行|接纳':['和自己和解的守夜人','安稳的底色里，住着接纳自己的勇气。'],
+  '安稳|独行|转向':['轻轻转舵的船长','这艘船是你的，方向也是你的；你可以静静调整帆的角度。']
+};
+
+function renderJourneyCard(){
+  if(!state.journeyCardData) state.journeyCardData = {};
+  const data = state.journeyCardData;
+  if(!data.cardImageId || !JOURNEY_CARD_IMAGES[data.cardImageId]){
+    data.cardImageId = randomJourneyCardId();
+    try {
+      localStorage.setItem(CARD_KEY, JSON.stringify({
+        journeyCardUnlocked: true,
+        journeyCardData: data
+      }));
+    } catch(e){}
+  }
+  $('#journey-card-image').src = JOURNEY_CARD_IMAGES[data.cardImageId];
+}
+
+$('#btn-card-close').addEventListener('click', () => { var bgm=document.getElementById('bgm');if(bgm&&bgm.paused){bgm.volume=0.5;bgm.src=bgmTracks.home;bgm.play().catch(function(){});}
+  $('#scene-journey-card').classList.remove('active');
+  showScene('home');
+});
+
+// ============================================================
+// 横屏检测 & 舞台缩放
+// ============================================================
+function checkOrientation(){
+  const isLandscape = window.innerWidth > window.innerHeight;
+  if(isLandscape){
+    $('#orientation-block').style.display = 'none';
+    $('#game-stage').style.display = 'block';
+    resizeStage();
+  } else {
+    $('#orientation-block').style.display = 'flex';
+    $('#game-stage').style.display = 'none';
+  }
+}
+
+function resizeStage(){
+  const stage = $('#game-stage');
+  const sw = window.innerWidth;
+  const sh = window.innerHeight;
+  const stageW = 1280;
+  const stageH = 720;
+  const ratio = stageW / stageH;
+  const windowRatio = sw / sh;
+  let scale, tx, ty;
+  if(windowRatio > ratio){
+    // 窗口比 16:9 更宽 → 高度撑满，左右居中
+    scale = sh / stageH;
+    tx = (sw - stageW * scale) / 2;
+    ty = 0;
+  } else {
+    // 窗口比 16:9 更窄（或相等）→ 宽度撑满，上下居中
+    scale = sw / stageW;
+    tx = 0;
+    ty = (sh - stageH * scale) / 2;
+  }
+  stage.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
+}
+
+window.addEventListener('resize', checkOrientation);
+window.addEventListener('orientationchange', () => setTimeout(checkOrientation, 300));
+
+// ============================================================
+// 生成装饰粒子
+// ============================================================
+function createParticles(){
+  const container = $('#particles');
+  for(let i=0; i<20; i++){
+    const p = document.createElement('div');
+    p.className = 'particle';
+    p.style.left = Math.random()*100 + '%';
+    p.style.top = (60 + Math.random()*40) + '%';
+    p.style.width = (2 + Math.random()*4) + 'px';
+    p.style.height = p.style.width;
+    p.style.animationDelay = Math.random()*8 + 's';
+    p.style.background = Math.random()>0.5 ? 'rgba(200,180,140,0.3)' : 'rgba(180,200,140,0.2)';
+    container.appendChild(p);
+  }
+}
+
+// ============================================================
+// 初始化
+// ============================================================
+
+// ===== BGM 控制系统 =====
+var bgmTracks = {
+  home: "music/music-1.mp3",
+  naming: "music/music-2.mp3",
+  returning: "music/music-3.mp3",
+  boss: "music/music-4.mp3"
+};
+var currentBGM = null;
+var bgmVolume = 0.5;
+
+function switchBGM(track){
+  var bgm = document.getElementById('bgm');
+  if(!bgm) return;
+  var src = bgmTracks[track];
+  if(!src || currentBGM === track) return;
+  currentBGM = track;
+  bgm.volume = bgmVolume;
+  bgm.src = src;
+  bgm.play().catch(function(){});
+}
+
+// 场景切换时自动切换BGM
+var _origShowScene = showScene;
+showScene = function(sceneId){
+  // BGM切换
+  if(sceneId === 'naming-road') switchBGM('naming');
+  else if(sceneId === 'returning-road') switchBGM('returning');
+  else if(sceneId === 'boss-intro' || sceneId === 'boss-confrontation' || sceneId === 'body-traces') switchBGM('boss');
+  else if(sceneId === 'home' || sceneId === 'intro-backpack' || sceneId === 'forest-start') switchBGM('home');
+  _origShowScene(sceneId);
+};
+
+// 初始化时开始播放
+switchBGM('home');
+
+function init(){
+  clearLegacyStorage();
+  createParticles();
+  checkOrientation();
+  loadCardState();
+  updateHomeButtons();
+  // 如果没有存档，继续按钮状态
+  if(!hasSave()){
+    state.hasSaveData = false;
+  }
+  console.log('🌟 《不被定义的我》Demo v0.1.0');
+  console.log('   横版互动叙事游戏 — 纯前端离线单文件');
+  console.log('   3道定义之门 × 3个选择 = 27种旅程');
+  console.log('   ✅ 已就绪');
+}
+
+init();
+</script>
+</body>
+</html>
