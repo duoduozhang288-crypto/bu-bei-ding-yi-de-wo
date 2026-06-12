@@ -117,7 +117,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:"Pi
 .home-buttons .btn.disabled{opacity:.58;filter:grayscale(.45);cursor:not-allowed;background:rgba(20,54,72,.2)!important}
 .home-info{position:absolute;bottom:7px;left:50%;transform:translateX(-50%);color:rgba(238,248,250,.76);font-size:10px;letter-spacing:1px;display:flex;gap:24px;z-index:32;white-space:nowrap}
 .home-card-entry{position:absolute;top:32px;right:42px;z-index:32;animation:floatCard 3s ease-in-out infinite}
-#scene-home{background-color:#8cb8cd!important;background-image:url('picture/fengmian.jpg')!important;background-repeat:no-repeat!important;background-size:cover!important;background-position:center!important}
+#scene-home{background-color:#8cb8cd!important;background-image:url('picture/fengmian.png')!important;background-repeat:no-repeat!important;background-size:cover!important;background-position:center!important}
 #scene-home .home-title,#scene-home .home-subtitle,#scene-home>.player{display:none}
 #scene-home .home-info{background:linear-gradient(90deg,transparent,rgba(25,67,90,.34),transparent);padding:5px 34px;text-shadow:0 1px 5px rgba(0,0,0,.4)}
 #scene-home .home-card-entry .btn{color:#eefaff;border-color:rgba(255,255,255,.45);background:rgba(28,70,91,.38);backdrop-filter:blur(4px);text-shadow:0 1px 5px rgba(0,0,0,.35)}
@@ -250,7 +250,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:"Pi
     <div class="home-buttons">
       <button class="btn btn-primary" id="btn-start" aria-label="开始路途" title="开始路途">开 始</button>
       <button class="btn btn-secondary" id="btn-continue" aria-label="旅途回忆" title="旅途回忆">继 续</button>
-      <button class="btn btn-secondary" id="btn-exit" aria-label="退出游戏" title="退出游戏">退 出</button>
+      <button class="btn btn-secondary" id="btn-exit" aria-label="结束旅途" title="结束旅途">退出旅途</button>
     </div>
     <div class="home-card-entry" id="home-card-entry" style="display:none">
       <button class="btn btn-secondary" id="btn-view-card" style="font-size:13px;padding:8px 20px">📜 查看旅程卡片</button>
@@ -450,8 +450,8 @@ const G = {
   meta:{projectName:'不被定义的我',version:'0.1.0',language:'zh-CN',orientation:'landscape',canvasRatio:'16:9',targetDuration:'3-6分钟',offlineOnly:true,noNetworkRequest:true,packageLimit:'8MB'},
 
   uiText:{
-    homeTitle:'不被定义的我',startButton:'开始',continueButton:'继续',exitButton:'退出',
-    continueDisabledTip:'暂无可继续的旅程',exitPlaceholderTip:'原型阶段暂不支持退出',
+    homeTitle:'不被定义的我',startButton:'开始',continueButton:'继续',exitButton:'结束旅途',
+    continueDisabledTip:'暂无可继续的旅程',exitPlaceholderTip:'旅途未完，暂时无法结束',
     orientationTitle:'不被定义的我',orientationMainTip:'请横屏体验',orientationSubTip:'这是一段向前走的路。请旋转手机，横屏进入这段旅程。',
     continue:'继续',backHome:'返回主页',close:'关闭',startJourney:'出发',stepForward:'向前一步',
     organizeBag:'整理背包',viewJourneyCard:'查看旅程卡片',
